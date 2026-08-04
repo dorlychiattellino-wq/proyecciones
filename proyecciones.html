@@ -184,7 +184,7 @@
       <div class="campo-form"><label>% s/ventas</label>
         <input type="text" inputmode="decimal" id="agComPct" onchange="g('agComPct');calc()"></div>
     </div>
-    <div class="aviso">Si el precio del cereal está en USD se convierte con el <b>TC mayorista COMPRA</b>. Los gastos de comercialización en USD/tn se convierten con el <b>TC mayorista VENTA</b> (editables en Parámetros).</div>
+    <div class="aviso"><b>Si dejás la comercialización en blanco</b>, se aplica el % de gastos <b>CON gtos com.</b> de Parámetros (ya la incluye). <b>Si cargás algo acá</b>, se aplica el % <b>SIN gtos com.</b> y la comercialización se descuenta aparte. El precio del cereal en USD se convierte con el <b>TC mayorista COMPRA</b>; la comercialización en USD/tn con el <b>TC mayorista VENTA</b>.</div>
   </div>
 
   <!-- ============ ARRENDAMIENTO ============ -->
@@ -234,7 +234,7 @@
 
   <div class="tarjeta">
     <h3 class="tit">🌱 Gastos por cultivo (% sobre ventas)</h3>
-    <p class="sub" style="margin-bottom:8px">Sin contar arrendamiento ni comercialización. Podés agregar más cultivos.</p>
+    <p class="sub" style="margin-bottom:8px">Dos porcentajes por cultivo: <b>% CON gtos com.</b> (se usa cuando NO cargás comercialización en el simulador) y <b>% SIN gtos com.</b> (se usa cuando SÍ la cargás, para no descontarla dos veces). Ninguno incluye el arrendamiento. Podés agregar más cultivos.</p>
     <div id="listaCultivos"></div>
     <div class="fila-botones">
       <input type="text" id="nuevoCult" placeholder="Nuevo cultivo (ej: Trigo)" style="flex:1;min-width:140px">
@@ -327,9 +327,9 @@ function estadoInicial(){
     arrPrecioNov:"", arrPrecioNovFecha:"", arrPrecioNovNota:"",
     params:{
       pctGan:"30",
-      cultivos:{ "Maíz":{pct:"40",precioTn:"",moneda:"ARS",fecha:""},
-                 "Girasol":{pct:"40",precioTn:"",moneda:"ARS",fecha:""},
-                 "Soja":{pct:"40",precioTn:"",moneda:"ARS",fecha:""} },
+      cultivos:{ "Maíz":{pctCon:"45",pctSin:"40",precioTn:"",moneda:"ARS",fecha:""},
+                 "Girasol":{pctCon:"45",pctSin:"40",precioTn:"",moneda:"ARS",fecha:""},
+                 "Soja":{pctCon:"45",pctSin:"40",precioTn:"",moneda:"ARS",fecha:""} },
       kgAnimal:{}, // se completa con defaults
       tcCompra:"", tcVenta:"", tcFecha:""
     }
@@ -347,6 +347,15 @@ function completarEstado(obj){
     if(!obj.cats[c.id]) obj.cats[c.id]={sel:false,cant:"",precio:"",fecha:""};
     if(obj.params.kgAnimal[c.id]===undefined) obj.params.kgAnimal[c.id]=String(c.kg);
   });
+  // Migración: antes cada cultivo tenía un solo % ("pct"); ahora hay dos:
+  // pctSin (sin gtos comercialización — el % viejo, porque la comercialización iba aparte)
+  // pctCon (con gtos comercialización incluidos)
+  for(const nom in obj.params.cultivos){
+    const c = obj.params.cultivos[nom];
+    if(c.pctSin===undefined) c.pctSin = (c.pct!==undefined)? c.pct : "40";
+    if(c.pctCon===undefined) c.pctCon = (c.pct!==undefined)? c.pct : "45";
+    delete c.pct;
+  }
   return obj;
 }
 function cargar(){
@@ -682,13 +691,21 @@ async function traerTC(){
    ============================================================ */
 function pintarCultivosParam(){
   const cont = document.getElementById("listaCultivos");
-  cont.innerHTML = "";
+  cont.innerHTML = `<div class="cult-fila" style="grid-template-columns:1fr 70px 70px 30px;margin-bottom:4px">
+    <div></div>
+    <small style="color:var(--gris);font-weight:700;text-align:center;line-height:1.1">% CON<br>gtos com.</small>
+    <small style="color:var(--gris);font-weight:700;text-align:center;line-height:1.1">% SIN<br>gtos com.</small>
+    <div></div></div>`;
   Object.keys(S.params.cultivos).forEach(c=>{
+    const cc = c.replace(/'/g,"\\'");
     const div = document.createElement("div"); div.className="cult-fila";
+    div.style.gridTemplateColumns = "1fr 70px 70px 30px";
     div.innerHTML = `<div style="font-weight:700">${c}</div>
-      <input type="text" inputmode="decimal" value="${S.params.cultivos[c].pct}" placeholder="%"
-        onchange="S.params.cultivos['${c.replace(/'/g,"\\'")}'].pct=this.value;guardar();calc()">
-      <button class="x" onclick="quitarCultivo('${c.replace(/'/g,"\\'")}')">✕</button>`;
+      <input type="text" inputmode="decimal" value="${S.params.cultivos[c].pctCon}" placeholder="%"
+        onchange="S.params.cultivos['${cc}'].pctCon=this.value;guardar();calc()">
+      <input type="text" inputmode="decimal" value="${S.params.cultivos[c].pctSin}" placeholder="%"
+        onchange="S.params.cultivos['${cc}'].pctSin=this.value;guardar();calc()">
+      <button class="x" onclick="quitarCultivo('${cc}')">✕</button>`;
     cont.appendChild(div);
   });
 }
@@ -697,9 +714,9 @@ function agregarCultivo(){
   const n = inp.value.trim(); if(!n) return;
   const nom = n.charAt(0).toUpperCase()+n.slice(1);
   if(S.params.cultivos[nom]){ toast("Ese cultivo ya existe"); return; }
-  S.params.cultivos[nom] = {pct:"40", precioTn:"", moneda:"ARS", fecha:""};
+  S.params.cultivos[nom] = {pctCon:"45", pctSin:"40", precioTn:"", moneda:"ARS", fecha:""};
   inp.value=""; guardar(); pintarCultivosParam(); pintarSelCultivos(); pintarPrecioCultivo(); calc();
-  toast("✔ Cultivo "+nom+" agregado (ajustá su % de gastos)");
+  toast("✔ Cultivo "+nom+" agregado (ajustá sus % de gastos)");
 }
 function quitarCultivo(c){
   if(Object.keys(S.params.cultivos).length<=1){ toast("Debe quedar al menos un cultivo"); return; }
@@ -737,7 +754,7 @@ function calcGanaderia(){
   return {ventas, gastos, pct, det};
 }
 function calcAgricultura(hasOverride){
-  const c = S.params.cultivos[S.agCultivo] || {pct:0,precioTn:0,moneda:"ARS"};
+  const c = S.params.cultivos[S.agCultivo] || {pctCon:0,pctSin:0,precioTn:0,moneda:"ARS"};
   const has = (hasOverride!==undefined)? hasOverride : num(S.agHas);
   const rinde = num(S.agRinde);
   const kg = has*rinde, tn = kg/1000;
@@ -745,16 +762,21 @@ function calcAgricultura(hasOverride){
   let precioKg = num(c.precioTn)/1000, notaPrecio="$/tn";
   if(c.moneda==="USD"){ precioKg = num(c.precioTn)*tcC/1000; notaPrecio="USD/tn × TC compra $"+fm2(tcC); }
   const ventas = kg*precioKg;
-  // comercialización
+  // comercialización cargada a mano (si está en blanco, el % de gastos la incluye)
   const usd=num(S.agComUsd), ars=num(S.agComArs), pctc=num(S.agComPct);
+  const hayCom = (usd>0 || ars>0 || pctc>0);
   let comerc=0; const detCom=[];
   if(usd>0){ const m=usd*tn*tcV; comerc+=m; detCom.push("USD "+fm2(usd)+"/tn × "+fm2(tn)+"tn × TC venta $"+fm2(tcV)+" = "+fm(m)); }
   if(ars>0){ const m=ars*tn; comerc+=m; detCom.push("$"+fm2(ars)+"/tn × "+fm2(tn)+"tn = "+fm(m)); }
   if(pctc>0){ const m=ventas*pctc/100; comerc+=m; detCom.push(fm2(pctc)+"% s/ventas = "+fm(m)); }
-  const pct = num(c.pct);
+  // % de gastos: sin nada cargado en comercialización usa el % CON gtos com. (ya la incluye);
+  // con comercialización cargada usa el % SIN gtos com. (para no descontarla dos veces)
+  const pct = hayCom? num(c.pctSin) : num(c.pctCon);
+  const notaPct = hayCom? "% SIN gtos com. (la comercialización va aparte)"
+                        : "% CON gtos com. incluidos";
   const gastos = ventas*pct/100;
   const faltaTC = (c.moneda==="USD" && tcC<=0) || (usd>0 && tcV<=0);
-  return {has, rinde, kg, tn, precioKg, notaPrecio, ventas, comerc, detCom, gastos, pct, faltaTC, moneda:c.moneda};
+  return {has, rinde, kg, tn, precioKg, notaPrecio, ventas, comerc, detCom, gastos, pct, notaPct, faltaTC, moneda:c.moneda};
 }
 function calcArrendamiento(has){
   const u = num(S.arrUnidadHa);
@@ -788,7 +810,7 @@ function calc(){
     const arr = calcArrendamiento(ag.has);
     html += linea("Ventas "+S.agCultivo, ag.ventas,
       fm2(ag.has)+" has × "+fm2(ag.rinde)+" kg/ha = "+fm2(ag.kg)+" kg × $"+fm2(ag.precioKg)+"/kg ("+ag.notaPrecio+")");
-    html += linea("Gastos "+S.agCultivo+" ("+fm2(ag.pct)+"% s/ventas)", ag.gastos, "", true);
+    html += linea("Gastos "+S.agCultivo+" ("+fm2(ag.pct)+"% s/ventas)", ag.gastos, ag.notaPct, true);
     if(ag.comerc>0) html += linea("Comercialización", ag.comerc, ag.detCom.join("<br>"), true);
     html += linea("Arrendamiento", arr.monto, arr.det, true);
     ventasTot = ag.ventas;
@@ -815,7 +837,7 @@ function calc(){
     html += `<div style="font-weight:800;margin:10px 0 4px;color:var(--verde)">🌱 Agricultura ${S.agCultivo} (${fm2(hasAgr)} has)</div>`;
     html += linea("Ventas "+S.agCultivo, ag.ventas,
       fm2(hasAgr)+" has × "+fm2(ag.rinde)+" kg/ha × $"+fm2(ag.precioKg)+"/kg ("+ag.notaPrecio+")");
-    html += linea("Gastos ("+fm2(ag.pct)+"%)", ag.gastos, "", true);
+    html += linea("Gastos ("+fm2(ag.pct)+"%)", ag.gastos, ag.notaPct, true);
     if(ag.comerc>0) html += linea("Comercialización", ag.comerc, ag.detCom.join("<br>"), true);
     html += linea("Arrendamiento proporcional", arrAgr, fm2(hasAgr)+"/"+fm2(hasTot)+" has del total "+fm(arr.monto), true);
     const balAgr = ag.ventas-ag.gastos-ag.comerc-arrAgr;
