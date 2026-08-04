@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0d2c54">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Campo">
+<link rel="manifest" href="manifest-campo.json">
+<link rel="icon" type="image/png" sizes="192x192" href="campo-icon-192.png">
+<link rel="apple-touch-icon" href="campo-icon-180.png">
+<title>Proyecciones Campo</title>
+<style>
+  :root{
+    --verde:#1565c0;
+    --verde-osc:#0d2c54;
+    --verde-claro:#5c9ce6;
+    --trigo:#e8a020;
+    --cielo:#eef3fa;
+    --papel:#fdfeff;
+    --tinta:#14202e;
+    --gris:#5f7084;
+    --gris-cl:#d8e2ee;
+    --rojo:#c03b3b;
+    --verde-ok:#2e9e57;
+    --sombra:0 2px 10px rgba(13,35,70,.12);
+    --radio:14px;
+    --display:"Georgia","Times New Roman",serif;
+    --body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{font-family:var(--body);background:var(--cielo);color:var(--tinta);font-size:15px;line-height:1.4;padding-bottom:90px}
+
+  header{background:var(--verde-osc);color:#eaf2fb;padding:14px 16px 12px;position:sticky;top:0;z-index:50;box-shadow:var(--sombra)}
+  .head-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .logo{display:flex;align-items:center;gap:10px}
+  .logo h1{font-family:var(--display);font-size:21px;margin:0;font-weight:700;letter-spacing:.5px}
+  .logo .escudo{width:34px;height:34px;border-radius:8px;background:var(--verde-claro);display:flex;align-items:center;justify-content:center;font-size:19px}
+  .chip-tc{background:rgba(255,255,255,.12);padding:5px 10px;border-radius:20px;font-size:11px;white-space:nowrap;text-align:right;line-height:1.25}
+
+  nav.principal{display:flex;background:var(--verde);overflow-x:auto;position:sticky;top:62px;z-index:49;box-shadow:var(--sombra)}
+  nav.principal button{flex:1 0 auto;background:none;border:none;color:rgba(255,255,255,.75);padding:12px 14px;font-size:14px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+  nav.principal button.activo{color:#fff;border-bottom-color:#ffd77a}
+
+  main{padding:16px;max-width:980px;margin:0 auto}
+  .vista{display:none;animation:aparece .25s ease}
+  .vista.activa{display:block}
+  @keyframes aparece{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  h2.sec{font-family:var(--display);font-size:20px;margin:0 0 4px}
+  p.sub{color:var(--gris);margin:0 0 14px;font-size:13px}
+  h3.tit{font-size:14px;text-transform:uppercase;letter-spacing:.5px;color:var(--verde);margin:0 0 10px;font-weight:800}
+
+  .tarjeta{background:var(--papel);border-radius:var(--radio);padding:16px;box-shadow:var(--sombra);margin-bottom:16px;border:1px solid var(--gris-cl)}
+  .campo-form{margin-bottom:12px}
+  .campo-form label{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--gris);margin-bottom:5px}
+  input,select{width:100%;padding:11px 12px;border:1px solid var(--gris-cl);border-radius:10px;font-size:16px;font-family:var(--body);background:#fff;color:var(--tinta)}
+  input:focus,select:focus{outline:2px solid var(--verde-claro);border-color:var(--verde-claro)}
+  .fila2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .fila3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  @media(max-width:520px){.fila3{grid-template-columns:1fr 1fr}}
+  .btn{background:var(--verde);color:#fff;border:none;padding:12px 18px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;width:100%}
+  .btn:active{transform:scale(.98)}
+  .btn.sec{background:var(--trigo)}
+  .btn.peq{width:auto;padding:8px 14px;font-size:13px}
+  .btn.gris{background:var(--gris)}
+  .btn.rojo{background:var(--rojo)}
+  .btn.linea{background:none;color:var(--verde);border:1.5px solid var(--verde)}
+
+  .sel-tipo{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:6px 0 14px}
+  .sel-tipo button{padding:14px 6px;border-radius:14px;border:2.5px solid var(--gris-cl);background:#fff;font-size:14px;font-weight:800;cursor:pointer;color:var(--tinta);display:flex;flex-direction:column;align-items:center;gap:5px}
+  .sel-tipo button .ic{font-size:24px}
+  .sel-tipo button.activo{border-color:var(--verde);background:#eaf2fb;color:var(--verde)}
+
+  .cat-fila{display:grid;grid-template-columns:26px 1fr 70px 105px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--gris-cl)}
+  .cat-fila:last-child{border-bottom:none}
+  .cat-fila input[type=checkbox]{width:22px;height:22px;accent-color:var(--verde)}
+  .cat-nom{font-size:13px;font-weight:700}
+  .cat-nom small{display:block;font-weight:400;color:var(--gris);font-size:11px}
+  .cat-fila input[type=text],.cat-fila input[type=number]{padding:8px;font-size:14px}
+  .nota-fecha{font-size:11px;color:var(--gris);margin-top:3px}
+  .nota-fecha.vieja{color:var(--rojo);font-weight:700}
+
+  .balance{background:linear-gradient(135deg,#eef4fb,#e3eefa);border:1px solid #bdd3ec}
+  .bal-linea{display:flex;justify-content:space-between;padding:5px 0;font-size:14px;border-bottom:1px dashed #c7d8ec}
+  .bal-linea small{color:var(--gris);display:block;font-size:11px}
+  .bal-linea.total{border-bottom:none;font-size:18px;font-weight:800;padding-top:10px}
+  .bal-linea .neg{color:var(--rojo)}
+  .bal-linea .pos{color:var(--verde-ok)}
+  .veredicto{text-align:center;font-weight:800;font-size:16px;padding:10px;border-radius:10px;margin-top:8px}
+  .veredicto.ok{background:#dff2e3;color:var(--verde-ok)}
+  .veredicto.mal{background:#f9e3e3;color:var(--rojo)}
+
+  .fila-botones{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .aviso{font-size:12px;color:var(--gris);background:#f2f6fb;border:1px dashed var(--gris-cl);border-radius:10px;padding:8px 10px;margin-top:10px}
+  .cult-fila{display:grid;grid-template-columns:1fr 70px 30px;gap:8px;align-items:center;margin-bottom:8px}
+  .cult-fila .x{background:none;border:none;color:var(--rojo);font-size:19px;cursor:pointer;font-weight:800}
+  .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--verde-osc);color:#fff;padding:11px 20px;border-radius:24px;font-size:14px;box-shadow:var(--sombra);z-index:99;opacity:0;pointer-events:none;transition:opacity .3s;max-width:90%;text-align:center}
+  .toast.ver{opacity:1}
+  .spin{display:inline-block;animation:gira 1s linear infinite}
+  @keyframes gira{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="head-row">
+    <div class="logo"><div class="escudo">🌾</div><h1>Proyecciones Campo</h1></div>
+    <div class="chip-tc" id="chipTC">TC: —</div>
+  </div>
+</header>
+
+<nav class="principal">
+  <button class="activo" data-v="vSim" onclick="verVista('vSim',this)">📊 Simulador</button>
+  <button data-v="vParam" onclick="verVista('vParam',this)">⚙️ Parámetros</button>
+</nav>
+
+<main>
+
+<!-- ==================== SIMULADOR ==================== -->
+<section id="vSim" class="vista activa">
+  <h2 class="sec">Campo a arrendar</h2>
+  <p class="sub">Elegí el tipo de campo y cargá los datos para proyectar el balance.</p>
+
+  <div class="sel-tipo">
+    <button id="btAGR" onclick="setTipo('AGRICOLA')"><span class="ic">🌱</span>Agrícola</button>
+    <button id="btGAN" onclick="setTipo('GANADERO')"><span class="ic">🐄</span>Ganadero</button>
+    <button id="btMIX" onclick="setTipo('MIXTO')"><span class="ic">🚜</span>Mixto</button>
+  </div>
+
+  <!-- Has por actividad (solo mixto) -->
+  <div class="tarjeta" id="cardHasMixto" style="display:none">
+    <h3 class="tit">🚜 Hectáreas por actividad</h3>
+    <div class="fila2">
+      <div class="campo-form"><label>Has ganaderas</label>
+        <input type="text" inputmode="decimal" id="mixHasGan" onchange="g('mixHasGan');calc()"></div>
+      <div class="campo-form"><label>Has agrícolas</label>
+        <input type="text" inputmode="decimal" id="mixHasAgr" onchange="g('mixHasAgr');calc()"></div>
+    </div>
+  </div>
+
+  <!-- ============ GANADERÍA ============ -->
+  <div class="tarjeta" id="cardGan" style="display:none">
+    <h3 class="tit">🐄 Ventas ganaderas</h3>
+    <p class="sub" style="margin-bottom:8px">Tildá las categorías, cargá cantidad y precio $/kg. Venta = cant × kg/animal × $/kg.</p>
+    <div id="listaCats"></div>
+    <div class="fila-botones">
+      <button class="btn peq sec" onclick="abrirDCAC()">🌐 decampoacampo</button>
+      <button class="btn peq linea" id="btAutoGan" onclick="traerPreciosGan()">⬇ Traer precios (auto)</button>
+    </div>
+    <div class="aviso">El precio queda guardado (aunque cierres la app) hasta que lo cambies. La fecha bajo cada precio indica de cuándo es.</div>
+  </div>
+
+  <!-- ============ AGRICULTURA ============ -->
+  <div class="tarjeta" id="cardAgr" style="display:none">
+    <h3 class="tit">🌱 Ventas agrícolas</h3>
+    <div class="fila2">
+      <div class="campo-form"><label>Cultivo</label>
+        <select id="agCultivo" onchange="g('agCultivo');pintarPrecioCultivo();calc()"></select></div>
+      <div class="campo-form"><label>Moneda del precio</label>
+        <select id="agMoneda" onchange="cambioMonedaCultivo()"><option value="ARS">$ / tn</option><option value="USD">USD / tn</option></select></div>
+    </div>
+    <div class="fila2">
+      <div class="campo-form"><label>Precio por tn <span id="lblMonPrecio">($/tn)</span></label>
+        <input type="text" inputmode="decimal" id="agPrecioTn" onchange="cambioPrecioCultivo()">
+        <div class="nota-fecha" id="fechaPrecioCultivo"></div></div>
+      <div class="campo-form" style="display:flex;align-items:flex-end">
+        <button class="btn peq linea" id="btBCR" style="width:100%" onclick="traerPrecioBCR()">⬇ Precio pizarra BCR</button></div>
+    </div>
+    <div class="fila2">
+      <div class="campo-form"><label>Has agrícolas</label>
+        <input type="text" inputmode="decimal" id="agHas" onchange="g('agHas');calc()"></div>
+      <div class="campo-form"><label>Rinde (kg/ha)</label>
+        <input type="text" inputmode="decimal" id="agRinde" onchange="g('agRinde');calc()"></div>
+    </div>
+    <h3 class="tit" style="margin-top:6px">Gastos de comercialización</h3>
+    <div class="fila3">
+      <div class="campo-form"><label>USD/tn</label>
+        <input type="text" inputmode="decimal" id="agComUsd" onchange="g('agComUsd');calc()"></div>
+      <div class="campo-form"><label>$/tn</label>
+        <input type="text" inputmode="decimal" id="agComArs" onchange="g('agComArs');calc()"></div>
+      <div class="campo-form"><label>% s/ventas</label>
+        <input type="text" inputmode="decimal" id="agComPct" onchange="g('agComPct');calc()"></div>
+    </div>
+    <div class="aviso">Si el precio del cereal está en USD se convierte con el <b>TC mayorista COMPRA</b>. Los gastos de comercialización en USD/tn se convierten con el <b>TC mayorista VENTA</b> (editables en Parámetros).</div>
+  </div>
+
+  <!-- ============ ARRENDAMIENTO ============ -->
+  <div class="tarjeta" id="cardArr">
+    <h3 class="tit">📄 Arrendamiento</h3>
+    <div class="fila2">
+      <div class="campo-form"><label>Se paga en</label>
+        <select id="arrTipo" onchange="g('arrTipo');pintarArr();calc()">
+          <option value="NOVILLO_KG">Kg de novillo (carne)</option>
+          <option value="SOJA_QQ">QQ de soja</option>
+        </select></div>
+      <div class="campo-form"><label id="lblUnidadHa">Kg/ha por año</label>
+        <input type="text" inputmode="decimal" id="arrUnidadHa" onchange="g('arrUnidadHa');calc()"></div>
+    </div>
+    <div class="fila2">
+      <div class="campo-form" id="wrapArrHas"><label>Has arrendadas (ganaderas)</label>
+        <input type="text" inputmode="decimal" id="arrHas" onchange="g('arrHas');calc()"></div>
+      <div class="campo-form"><label id="lblArrPrecio">Precio novillo ($/kg)</label>
+        <input type="text" inputmode="decimal" id="arrPrecio" onchange="cambioPrecioArr()">
+        <div class="nota-fecha" id="fechaPrecioArr"></div></div>
+    </div>
+    <div class="fila-botones">
+      <button class="btn peq linea" id="btRefArr" onclick="refPrecioArr()">⬇ Usar precio de referencia</button>
+      <button class="btn peq sec" id="btAbrirMAG" onclick="abrirMAG()" style="display:none">🌐 Abrir MAG</button>
+    </div>
+    <div class="aviso" id="avisoArr"></div>
+  </div>
+
+  <!-- ============ BALANCE ============ -->
+  <div class="tarjeta balance" id="cardBal">
+    <h3 class="tit">💰 Balance proyectado</h3>
+    <div id="balCuerpo"></div>
+    <div id="balVeredicto"></div>
+  </div>
+</section>
+
+<!-- ==================== PARÁMETROS ==================== -->
+<section id="vParam" class="vista">
+  <h2 class="sec">Parámetros</h2>
+  <p class="sub">Porcentajes de gastos, kg por animal y tipo de cambio. Todo queda guardado en el teléfono.</p>
+
+  <div class="tarjeta">
+    <h3 class="tit">🐄 Gastos campo ganadero</h3>
+    <div class="campo-form"><label>% de gastos sobre ventas ganaderas (sin contar arrendamiento)</label>
+      <input type="text" inputmode="decimal" id="pPctGan" onchange="gp('pctGan','pPctGan');calc()"></div>
+  </div>
+
+  <div class="tarjeta">
+    <h3 class="tit">🌱 Gastos por cultivo (% sobre ventas)</h3>
+    <p class="sub" style="margin-bottom:8px">Sin contar arrendamiento ni comercialización. Podés agregar más cultivos.</p>
+    <div id="listaCultivos"></div>
+    <div class="fila-botones">
+      <input type="text" id="nuevoCult" placeholder="Nuevo cultivo (ej: Trigo)" style="flex:1;min-width:140px">
+      <button class="btn peq" onclick="agregarCultivo()">＋ Agregar</button>
+    </div>
+  </div>
+
+  <div class="tarjeta">
+    <h3 class="tit">⚖️ Kg por animal (para calcular la venta)</h3>
+    <div id="listaKg"></div>
+  </div>
+
+  <div class="tarjeta">
+    <h3 class="tit">💵 Tipo de cambio mayorista</h3>
+    <div class="fila2">
+      <div class="campo-form"><label>Compra ($/USD)</label>
+        <input type="text" inputmode="decimal" id="pTcCompra" onchange="cambioTC()"></div>
+      <div class="campo-form"><label>Venta ($/USD)</label>
+        <input type="text" inputmode="decimal" id="pTcVenta" onchange="cambioTC()"></div>
+    </div>
+    <div class="nota-fecha" id="fechaTC"></div>
+    <div class="fila-botones">
+      <button class="btn peq linea" id="btTC" onclick="traerTC()">⬇ Actualizar TC (DolarApi)</button>
+    </div>
+    <div class="aviso">COMPRA → convierte el precio del cereal en USD. VENTA → convierte los gastos de comercialización en USD/tn.</div>
+  </div>
+
+  <div class="tarjeta">
+    <h3 class="tit">☁️ Sincronización entre celulares</h3>
+    <div class="campo-form"><label>URL de tu base Firebase (Realtime Database)</label>
+      <input type="url" id="pSyncUrl" placeholder="https://tuproyecto-default-rtdb.firebaseio.com"></div>
+    <div class="fila-botones">
+      <button class="btn peq" onclick="conectarSync(true)">🔗 Conectar</button>
+      <button class="btn peq linea" onclick="probarSync()">Probar conexión</button>
+      <button class="btn peq gris" onclick="desconectarSync()">Desconectar</button>
+    </div>
+    <div class="nota-fecha" id="syncEstado" style="margin-top:8px">Sin sincronización: los datos quedan solo en este teléfono.</div>
+    <div class="aviso">Con la URL cargada, precios, parámetros y porcentajes se comparten entre todos los teléfonos que tengan la misma URL: cuando uno carga un dato, los demás lo ven al instante. Si no hay señal, la app sigue funcionando con lo guardado en el teléfono y sincroniza al volver la conexión.</div>
+  </div>
+
+  <div class="tarjeta">
+    <h3 class="tit">🗑 Datos</h3>
+    <button class="btn rojo" onclick="borrarTodo()">Borrar todos los datos guardados</button>
+  </div>
+</section>
+
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   PROYECCIONES CAMPO — lógica basada en mestizo.py
+   - Arrendamiento en QQ de soja o Kg de novillo (× has × precio)
+   - Precio cereal: pizarra BCR ($/tn). Si USD → TC mayorista COMPRA
+   - Comercialización USD/tn → TC mayorista VENTA
+   - Precios hacienda: decampoacampo (invernada) — auto o manual
+   - Todo persistido en localStorage
+   ============================================================ */
+
+const LSKEY = "proy_campo_v1";
+const HOY = () => { const d=new Date(); return ("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+d.getFullYear(); };
+
+const CATS = [
+  {id:"TERNERAS",    nom:"Terneras",    buscar:"Terneras 150-170 kgs", kg:180},
+  {id:"TERNEROS",    nom:"Terneros",    buscar:"Terneros 160-180 Kg.", kg:180},
+  {id:"NOVILLITOS",  nom:"Novillitos",  buscar:"Terneros 230-260 Kg.", kg:250},
+  {id:"VAQUILLONAS", nom:"Vaquillonas", buscar:"Vaquillonas +290 kgs", kg:320},
+  {id:"NOVILLOS",    nom:"Novillos",    buscar:"Novillitos +300 Kg.",  kg:340},
+];
+
+const URL_DCAC_INV_WEB = "https://www.decampoacampo.com/__dcac/outside/precios/invernada";
+const URL_DCAC_LIN_WEB = "https://www.decampoacampo.com/__dcac/outside/liniers/precios";
+const URL_DCAC_API_INV = "https://www.decampoacampo.com/__dcac/outside/precios/gh_funciones.php?function=getlistadopreciosinvernada&m=peso";
+const URL_DCAC_API_LIN = "https://www.decampoacampo.com/__dcac/outside/liniers/gh_funciones.php?function=getlistadopreciosgordo&m=peso";
+const URL_BCR = "https://www.cac.bcr.com.ar/es/precios-de-pizarra";
+const URL_TC = "https://dolarapi.com/v1/dolares/mayorista";
+const PROXY = u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u);
+
+/* ---------- estado ---------- */
+function estadoInicial(){
+  const cats = {};
+  CATS.forEach(c => cats[c.id] = {sel:false, cant:"", precio:"", fecha:""});
+  return {
+    tipo: "GANADERO",
+    cats,
+    agCultivo:"Soja", agHas:"", agRinde:"", agComUsd:"", agComArs:"", agComPct:"",
+    mixHasGan:"", mixHasAgr:"",
+    arrTipo:"NOVILLO_KG", arrUnidadHa:"", arrHas:"", arrPrecio:"", arrPrecioFecha:"",
+    arrPrecioSoja:"", arrPrecioSojaFecha:"", // se guardan por separado para no pisarse
+    arrPrecioNov:"", arrPrecioNovFecha:"", arrPrecioNovNota:"",
+    params:{
+      pctGan:"30",
+      cultivos:{ "Maíz":{pct:"40",precioTn:"",moneda:"ARS",fecha:""},
+                 "Girasol":{pct:"40",precioTn:"",moneda:"ARS",fecha:""},
+                 "Soja":{pct:"40",precioTn:"",moneda:"ARS",fecha:""} },
+      kgAnimal:{}, // se completa con defaults
+      tcCompra:"", tcVenta:"", tcFecha:""
+    }
+  };
+}
+let S;
+function completarEstado(obj){
+  // completar campos faltantes (versiones viejas o datos remotos incompletos)
+  const base = estadoInicial();
+  for(const k in base) if(obj[k]===undefined) obj[k]=base[k];
+  if(!obj.params) obj.params = base.params;
+  for(const k in base.params) if(obj.params[k]===undefined) obj.params[k]=base.params[k];
+  if(!obj.cats) obj.cats = base.cats;
+  CATS.forEach(c=>{
+    if(!obj.cats[c.id]) obj.cats[c.id]={sel:false,cant:"",precio:"",fecha:""};
+    if(obj.params.kgAnimal[c.id]===undefined) obj.params.kgAnimal[c.id]=String(c.kg);
+  });
+  return obj;
+}
+function cargar(){
+  try{ S = JSON.parse(localStorage.getItem(LSKEY)) || estadoInicial(); }
+  catch(e){ S = estadoInicial(); }
+  S = completarEstado(S);
+  guardarLocal();
+}
+function guardarLocal(){ try{ localStorage.setItem(LSKEY, JSON.stringify(S)); }catch(e){} }
+function guardar(){ S._mod = Date.now(); guardarLocal(); programarPush(); }
+
+/* ---------- helpers ---------- */
+function num(v){
+  if(v===null||v===undefined) return 0;
+  v = String(v).trim(); if(!v) return 0;
+  // formato argentino: 1.234,56  o  1234.56
+  if(v.includes(",")) v = v.replace(/\./g,"").replace(",",".");
+  const n = parseFloat(v.replace(/[^0-9.\-]/g,""));
+  return isNaN(n)?0:n;
+}
+function fm(n){ return "$ " + (n||0).toLocaleString("es-AR",{maximumFractionDigits:0}); }
+function fm2(n){ return (n||0).toLocaleString("es-AR",{maximumFractionDigits:2}); }
+function toast(msg,ms){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("ver");
+  clearTimeout(t._to); t._to=setTimeout(()=>t.classList.remove("ver"), ms||3200); }
+function notaFecha(el, fecha, pref){
+  el.textContent = fecha ? ((pref||"Precio del ")+fecha) : "Sin precio cargado";
+  el.classList.toggle("vieja", !!fecha && fecha!==HOY());
+}
+function norm(t){ return String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," "); }
+
+async function fetchTexto(url, opts){
+  // 1º directo (por si el sitio permite CORS), 2º vía proxy allorigins
+  try{ const r = await fetch(url, opts); if(r.ok) return await r.text(); }catch(e){}
+  const r2 = await fetch(PROXY(url)); if(!r2.ok) throw new Error("Sin respuesta");
+  return await r2.text();
+}
+
+/* getters genéricos input→estado */
+function g(id){ S[id] = document.getElementById(id).value; guardar(); }
+function gp(campo,id){ S.params[campo] = document.getElementById(id).value; guardar(); }
+
+/* ============================================================
+   TIPO DE CAMPO
+   ============================================================ */
+function setTipo(t){
+  S.tipo = t; guardar();
+  document.getElementById("btAGR").classList.toggle("activo", t==="AGRICOLA");
+  document.getElementById("btGAN").classList.toggle("activo", t==="GANADERO");
+  document.getElementById("btMIX").classList.toggle("activo", t==="MIXTO");
+  document.getElementById("cardGan").style.display = (t==="GANADERO"||t==="MIXTO")?"":"none";
+  document.getElementById("cardAgr").style.display = (t==="AGRICOLA"||t==="MIXTO")?"":"none";
+  document.getElementById("cardHasMixto").style.display = (t==="MIXTO")?"":"none";
+  // has del arrendamiento: en mixto salen de la tarjeta de has por actividad
+  document.getElementById("wrapArrHas").style.display = (t==="MIXTO")?"none":"";
+  const lbl = document.querySelector("#wrapArrHas label");
+  lbl.textContent = (t==="GANADERO") ? "Has arrendadas (ganaderas)" : "Has arrendadas";
+  pintarArr(); calc();
+}
+
+/* ============================================================
+   GANADERÍA
+   ============================================================ */
+function pintarCats(){
+  const cont = document.getElementById("listaCats");
+  cont.innerHTML = "";
+  CATS.forEach(c=>{
+    const st = S.cats[c.id];
+    const kg = S.params.kgAnimal[c.id];
+    const div = document.createElement("div");
+    div.className = "cat-fila";
+    div.innerHTML = `
+      <input type="checkbox" ${st.sel?"checked":""} onchange="catSel('${c.id}',this.checked)">
+      <div class="cat-nom">${c.nom}<small>${kg} kg/animal · ${c.buscar}</small></div>
+      <input type="text" inputmode="numeric" placeholder="Cant." value="${st.cant}" onchange="catCant('${c.id}',this.value)">
+      <div><input type="text" inputmode="decimal" placeholder="$/kg" value="${st.precio}" onchange="catPrecio('${c.id}',this.value)">
+      <div class="nota-fecha ${st.fecha&&st.fecha!==HOY()?'vieja':''}">${st.fecha?("Precio del "+st.fecha):"sin precio"}</div></div>`;
+    cont.appendChild(div);
+  });
+}
+function catSel(id,v){ S.cats[id].sel=v; guardar(); calc(); }
+function catCant(id,v){ S.cats[id].cant=v; guardar(); calc(); }
+function catPrecio(id,v){ S.cats[id].precio=v; S.cats[id].fecha=HOY(); guardar(); pintarCats(); calc(); }
+
+function abrirDCAC(){
+  window.open(URL_DCAC_INV_WEB, "_blank");
+}
+
+async function traerPreciosGan(){
+  const sel = CATS.filter(c=>S.cats[c.id].sel);
+  if(!sel.length){ toast("Tildá al menos una categoría primero"); return; }
+  const bt = document.getElementById("btAutoGan");
+  bt.innerHTML = '<span class="spin">⏳</span> Buscando…'; bt.disabled = true;
+  const textos = [];
+  for(const u of [URL_DCAC_API_INV, URL_DCAC_API_LIN, URL_DCAC_INV_WEB]){
+    try{ textos.push(norm((await fetchTexto(u)).replace(/<[^>]+>/g," "))); }catch(e){}
+  }
+  bt.innerHTML = "⬇ Traer precios (auto)"; bt.disabled = false;
+  if(!textos.length){ toast("No se pudo conectar. Usá 🌐 decampoacampo y cargalos a mano."); return; }
+  let ok=0, fallo=[];
+  for(const c of sel){
+    let precio = null;
+    for(const t of textos){ precio = buscarPrecio(t, c.buscar); if(precio) break; }
+    if(precio){ S.cats[c.id].precio = String(precio); S.cats[c.id].fecha = HOY(); ok++; }
+    else fallo.push(c.nom);
+  }
+  guardar(); pintarCats(); calc();
+  toast(ok? ("✔ "+ok+" precio(s) actualizados"+(fallo.length?" · sin datos: "+fallo.join(", "):"")+". Revisalos contra la web.")
+          : "No se encontraron precios: cargalos a mano desde 🌐 decampoacampo");
+}
+function buscarPrecio(texto, termino){
+  // misma estrategia que mestizo.py: tokens en orden + número plausible cercano
+  const toks = norm(termino).split(" ").filter(t=>!["kg","kgs","kg.","y","a","de","+"].includes(t) && t);
+  if(!toks.length) return null;
+  const pat = toks.map(t=>t.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("[^a-z0-9]{0,12}");
+  const re = new RegExp(pat,"g");
+  let m;
+  while((m = re.exec(texto))){
+    const vent = texto.slice(m.index+m[0].length, m.index+m[0].length+120);
+    const nums = vent.match(/(\d{1,2}\.\d{3}(?:,\d+)?|\d{3,5}(?:,\d+)?)/g) || [];
+    for(const s of nums){
+      const v = parseFloat(s.replace(/\./g,"").replace(",","."));
+      if(v>=300 && v<=30000) return v;   // rango plausible $/kg
+    }
+  }
+  return null;
+}
+
+/* ============================================================
+   AGRICULTURA (precio cereal + parámetros por cultivo)
+   ============================================================ */
+function pintarSelCultivos(){
+  const sel = document.getElementById("agCultivo");
+  sel.innerHTML = "";
+  Object.keys(S.params.cultivos).forEach(c=>{
+    const o=document.createElement("option"); o.value=c; o.textContent=c; sel.appendChild(o);
+  });
+  if(!S.params.cultivos[S.agCultivo]) S.agCultivo = Object.keys(S.params.cultivos)[0]||"";
+  sel.value = S.agCultivo;
+}
+function pintarPrecioCultivo(){
+  const c = S.params.cultivos[S.agCultivo]; if(!c) return;
+  document.getElementById("agMoneda").value = c.moneda||"ARS";
+  document.getElementById("agPrecioTn").value = c.precioTn||"";
+  document.getElementById("lblMonPrecio").textContent = (c.moneda==="USD")?"(USD/tn)":"($/tn)";
+  notaFecha(document.getElementById("fechaPrecioCultivo"), c.fecha);
+}
+function cambioPrecioCultivo(){
+  const c = S.params.cultivos[S.agCultivo]; if(!c) return;
+  c.precioTn = document.getElementById("agPrecioTn").value;
+  c.fecha = HOY(); guardar(); pintarPrecioCultivo(); calc();
+}
+function cambioMonedaCultivo(){
+  const c = S.params.cultivos[S.agCultivo]; if(!c) return;
+  c.moneda = document.getElementById("agMoneda").value; guardar();
+  pintarPrecioCultivo(); calc();
+}
+async function traerPrecioBCR(){
+  const bt = document.getElementById("btBCR");
+  bt.innerHTML='<span class="spin">⏳</span> Buscando…'; bt.disabled=true;
+  try{
+    const html = await fetchTexto(URL_BCR);
+    const cult = S.agCultivo;
+    const pats = { "Soja":"\\bSoja\\b","Maíz":"\\bMa[íi]z\\b","Sorgo":"\\bSorgo\\b",
+                   "Trigo":"\\bTrigo\\b","Girasol":"\\bGirasol\\b","Cebada":"\\bCebada\\b" };
+    const pat = pats[cult] || ("\\b"+cult.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\b");
+    const re = new RegExp(pat+"[\\s\\S]{0,500}?\\$\\s*([\\d]{1,3}(?:\\.[\\d]{3})*(?:,\\d{1,2})?|\\d+[,\\.]\\d+|\\d+)","i");
+    const m = html.match(re);
+    if(m){
+      const precioTn = parseFloat(m[1].replace(/\./g,"").replace(",","."));
+      const c = S.params.cultivos[cult];
+      c.precioTn = String(precioTn); c.moneda = "ARS"; c.fecha = HOY();
+      guardar(); pintarPrecioCultivo(); calc();
+      toast("✔ "+cult+": "+fm(precioTn)+"/tn (pizarra BCR). Revisalo y editalo si hace falta.");
+    }else{
+      toast("No se encontró "+cult+" en la pizarra BCR: cargalo a mano.");
+    }
+  }catch(e){ toast("No se pudo conectar con BCR: cargá el precio a mano."); }
+  bt.innerHTML="⬇ Precio pizarra BCR"; bt.disabled=false;
+}
+
+/* ============================================================
+   ARRENDAMIENTO (como mestizo.py: qq soja o kg novillo)
+   ============================================================ */
+function pintarArr(){
+  document.getElementById("arrTipo").value = S.arrTipo;
+  const esSoja = S.arrTipo==="SOJA_QQ";
+  document.getElementById("lblUnidadHa").textContent = esSoja? "QQ/ha por año" : "Kg/ha por año";
+  document.getElementById("lblArrPrecio").textContent = esSoja? "Precio soja ($/qq)" : "Precio novillo ($/kg)";
+  document.getElementById("btRefArr").textContent = esSoja? "⬇ Soja BCR → $/qq" : "⬇ Traer novillo Cañuelas (INMAG)";
+  document.getElementById("btAbrirMAG").style.display = esSoja? "none" : "";
+  document.getElementById("arrUnidadHa").value = S.arrUnidadHa;
+  document.getElementById("arrHas").value = S.arrHas;
+  // precio guardado por tipo de unidad (no se pisan entre sí)
+  const p = esSoja? S.arrPrecioSoja : S.arrPrecioNov;
+  const f = esSoja? S.arrPrecioSojaFecha : S.arrPrecioNovFecha;
+  const nota = esSoja? "" : (S.arrPrecioNovNota||"");
+  document.getElementById("arrPrecio").value = p;
+  const el = document.getElementById("fechaPrecioArr");
+  el.textContent = f ? ("Precio del "+f + (nota? " · "+nota : "")) : "Sin precio cargado";
+  el.classList.toggle("vieja", !!f && f!==HOY());
+  document.getElementById("avisoArr").textContent = esSoja?
+    "Arrendamiento = has × qq/ha × precio soja $/qq (1 qq = 100 kg)." :
+    "Arrendamiento = has × kg/ha × precio novillo $/kg. El precio sugerido es el ÍNDICE ARRENDAMIENTO (INMAG) del Mercado Agroganadero de Cañuelas: promedio del lunes a viernes de la semana anterior.";
+}
+function cambioPrecioArr(){
+  const v = document.getElementById("arrPrecio").value;
+  if(S.arrTipo==="SOJA_QQ"){ S.arrPrecioSoja=v; S.arrPrecioSojaFecha=HOY(); }
+  else { S.arrPrecioNov=v; S.arrPrecioNovFecha=HOY(); S.arrPrecioNovNota="cargado a mano"; }
+  guardar(); pintarArr(); calc();
+}
+
+/* --- Índice novillo arrendamiento (INMAG) — Mercado Agroganadero de Cañuelas ---
+   Igual que mestizo.py: promedio ponderado de la semana L-V anterior,
+   con corte de semana el SÁBADO (recién el sábado se pasa a la semana nueva). */
+const URL_MAG = "https://www.mercadoagroganadero.com.ar/dll/hacienda2.dll/haciinfo000013";
+function semanaAnteriorLV(){
+  const hoy = new Date();
+  const wd = (hoy.getDay()+6)%7;              // lun=0 ... sáb=5, dom=6
+  const diasDesdeSabado = (wd-5+7)%7;         // sáb→0, dom→1, lun→2, ..., vie→6
+  const sab = new Date(hoy); sab.setDate(hoy.getDate()-diasDesdeSabado);
+  const vie = new Date(sab); vie.setDate(sab.getDate()-1);
+  const lun = new Date(vie); lun.setDate(vie.getDate()-4);
+  return [lun, vie];
+}
+function fAR(d){ return ("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+d.getFullYear(); }
+function abrirMAG(){
+  const [lun, vie] = semanaAnteriorLV();
+  window.open(URL_MAG.replace("haciinfo000013","haciinfo000013")+"?fecdesde="+fAR(lun)+"&fechasta="+fAR(vie), "_blank");
+}
+async function traerNovilloMAG(){
+  const bt = document.getElementById("btRefArr");
+  bt.innerHTML='<span class="spin">⏳</span> Consultando MAG…'; bt.disabled=true;
+  const [lun, vie] = semanaAnteriorLV();
+  const fIni = fAR(lun), fFin = fAR(vie);
+  const cuerpo = new URLSearchParams({
+    ID:"", CP:"", FLASH:"", USUARIO:"SIN IDENTIFICAR",
+    OPCIONMENU:"", OPCIONSUBMENU:"",
+    txtFechaIni:fIni, txtFechaFin:fFin
+  }).toString();
+  const post = u => fetch(u, {method:"POST", body:cuerpo,
+    headers:{"Content-Type":"application/x-www-form-urlencoded"}});
+  let html = "";
+  // 1º directo, 2º-3º por proxies (el sitio no permite CORS desde el navegador)
+  const intentos = [URL_MAG,
+                    "https://corsproxy.io/?url="+encodeURIComponent(URL_MAG),
+                    "https://api.allorigins.win/raw?url="+encodeURIComponent(URL_MAG)];
+  for(const u of intentos){
+    try{ const r = await post(u); if(r.ok){ html = await r.text(); if(html.length>200) break; } }catch(e){}
+  }
+  bt.disabled=false; pintarArr();
+  if(!html){
+    toast("No se pudo consultar el MAG desde acá. Tocá 🌐 Abrir MAG, mirá el Total y cargalo a mano.");
+    return;
+  }
+  // Fila "Totales": la celda del índice es la única con 3 decimales (formato 1.234,567)
+  const mTot = html.match(/Totales[\s\S]*?<\/TR>/i);
+  let valor = null;
+  if(mTot){
+    const celdas = (mTot[0].match(/<TD[^>]*>([\s\S]*?)<\/TD>/gi)||[])
+      .map(c=>c.replace(/<[^>]+>/g,"").trim());
+    for(const c of celdas){
+      if(/^\d{1,3}(?:\.\d{3})*,\d{3}$/.test(c)){
+        valor = parseFloat(c.replace(/\./g,"").replace(",",".")); break;
+      }
+    }
+  }
+  if(valor){
+    S.arrPrecioNov = String(valor);
+    S.arrPrecioNovFecha = HOY();
+    S.arrPrecioNovNota = "INMAG Cañuelas, promedio "+fIni+" al "+fFin;
+    guardar(); pintarArr(); calc();
+    toast("✔ Índice novillo arrendamiento: $ "+fm2(valor)+"/kg (promedio "+fIni+" al "+fFin+", INMAG Cañuelas)");
+  }else{
+    toast("El MAG respondió pero sin índice para la semana "+fIni+"–"+fFin+" (probá en día hábil, o 🌐 Abrir MAG y cargalo a mano).");
+  }
+}
+
+async function refPrecioArr(){
+  if(S.arrTipo==="SOJA_QQ"){
+    // BCR: soja $/tn → $/qq = /10
+    const bt = document.getElementById("btRefArr");
+    bt.innerHTML='<span class="spin">⏳</span>…'; bt.disabled=true;
+    try{
+      const html = await fetchTexto(URL_BCR);
+      const m = html.match(/\bSoja\b[\s\S]{0,500}?\$\s*([\d]{1,3}(?:\.[\d]{3})*(?:,\d{1,2})?|\d+)/i);
+      if(m){
+        const tn = parseFloat(m[1].replace(/\./g,"").replace(",","."));
+        S.arrPrecioSoja = String(Math.round(tn/10*100)/100); // $/tn → $/qq
+        S.arrPrecioSojaFecha = HOY(); guardar(); pintarArr(); calc();
+        toast("✔ Soja BCR: "+fm(tn)+"/tn → "+fm(tn/10)+"/qq");
+      } else toast("No se encontró la soja en BCR: cargalo a mano.");
+    }catch(e){ toast("Sin conexión con BCR: cargá el precio a mano."); }
+    bt.disabled=false; pintarArr();
+  }else{
+    await traerNovilloMAG();
+  }
+}
+
+/* ============================================================
+   TIPO DE CAMBIO
+   ============================================================ */
+function pintarTC(){
+  document.getElementById("pTcCompra").value = S.params.tcCompra;
+  document.getElementById("pTcVenta").value = S.params.tcVenta;
+  notaFecha(document.getElementById("fechaTC"), S.params.tcFecha, "TC del ");
+  const c=num(S.params.tcCompra), v=num(S.params.tcVenta);
+  document.getElementById("chipTC").innerHTML = (c||v)?
+    ("TC C $"+fm2(c)+" · V $"+fm2(v)+"<br><small>"+(S.params.tcFecha||"")+"</small>") : "TC: sin cargar";
+}
+function cambioTC(){
+  S.params.tcCompra = document.getElementById("pTcCompra").value;
+  S.params.tcVenta = document.getElementById("pTcVenta").value;
+  S.params.tcFecha = HOY(); guardar(); pintarTC(); calc();
+}
+async function traerTC(){
+  const bt = document.getElementById("btTC");
+  bt.innerHTML='<span class="spin">⏳</span> Consultando…'; bt.disabled=true;
+  try{
+    let d;
+    try{ d = await (await fetch(URL_TC)).json(); }
+    catch(e){ d = JSON.parse(await fetchTexto(URL_TC)); }
+    if(d && d.compra){
+      S.params.tcCompra = String(d.compra); S.params.tcVenta = String(d.venta||d.compra);
+      S.params.tcFecha = HOY(); guardar(); pintarTC(); calc();
+      toast("✔ TC mayorista: compra $"+fm2(d.compra)+" · venta $"+fm2(d.venta));
+    } else toast("Respuesta inválida de DolarApi.");
+  }catch(e){ toast("Sin conexión: cargá el TC a mano."); }
+  bt.innerHTML="⬇ Actualizar TC (DolarApi)"; bt.disabled=false;
+}
+
+/* ============================================================
+   PARÁMETROS: cultivos + kg animal
+   ============================================================ */
+function pintarCultivosParam(){
+  const cont = document.getElementById("listaCultivos");
+  cont.innerHTML = "";
+  Object.keys(S.params.cultivos).forEach(c=>{
+    const div = document.createElement("div"); div.className="cult-fila";
+    div.innerHTML = `<div style="font-weight:700">${c}</div>
+      <input type="text" inputmode="decimal" value="${S.params.cultivos[c].pct}" placeholder="%"
+        onchange="S.params.cultivos['${c.replace(/'/g,"\\'")}'].pct=this.value;guardar();calc()">
+      <button class="x" onclick="quitarCultivo('${c.replace(/'/g,"\\'")}')">✕</button>`;
+    cont.appendChild(div);
+  });
+}
+function agregarCultivo(){
+  const inp = document.getElementById("nuevoCult");
+  const n = inp.value.trim(); if(!n) return;
+  const nom = n.charAt(0).toUpperCase()+n.slice(1);
+  if(S.params.cultivos[nom]){ toast("Ese cultivo ya existe"); return; }
+  S.params.cultivos[nom] = {pct:"40", precioTn:"", moneda:"ARS", fecha:""};
+  inp.value=""; guardar(); pintarCultivosParam(); pintarSelCultivos(); pintarPrecioCultivo(); calc();
+  toast("✔ Cultivo "+nom+" agregado (ajustá su % de gastos)");
+}
+function quitarCultivo(c){
+  if(Object.keys(S.params.cultivos).length<=1){ toast("Debe quedar al menos un cultivo"); return; }
+  if(!confirm("¿Quitar "+c+"?")) return;
+  delete S.params.cultivos[c];
+  if(S.agCultivo===c) S.agCultivo = Object.keys(S.params.cultivos)[0];
+  guardar(); pintarCultivosParam(); pintarSelCultivos(); pintarPrecioCultivo(); calc();
+}
+function pintarKg(){
+  const cont = document.getElementById("listaKg");
+  cont.innerHTML = "";
+  CATS.forEach(c=>{
+    const div = document.createElement("div"); div.className="cult-fila";
+    div.style.gridTemplateColumns = "1fr 90px";
+    div.innerHTML = `<div style="font-weight:700">${c.nom}<br><small style="font-weight:400;color:var(--gris)">kg de venta por animal</small></div>
+      <input type="text" inputmode="decimal" value="${S.params.kgAnimal[c.id]}"
+        onchange="S.params.kgAnimal['${c.id}']=this.value;guardar();pintarCats();calc()">`;
+    cont.appendChild(div);
+  });
+}
+
+/* ============================================================
+   CÁLCULO Y BALANCE
+   ============================================================ */
+function calcGanaderia(){
+  let ventas=0; const det=[];
+  CATS.forEach(c=>{
+    const st=S.cats[c.id]; if(!st.sel) return;
+    const cant=num(st.cant), kg=num(S.params.kgAnimal[c.id]), p=num(st.precio);
+    const v = cant*kg*p;
+    if(cant>0 && p>0){ ventas+=v; det.push(cant+" "+c.nom+" × "+kg+"kg × $"+fm2(p)+" = "+fm(v)); }
+  });
+  const pct = num(S.params.pctGan);
+  const gastos = ventas*pct/100;
+  return {ventas, gastos, pct, det};
+}
+function calcAgricultura(hasOverride){
+  const c = S.params.cultivos[S.agCultivo] || {pct:0,precioTn:0,moneda:"ARS"};
+  const has = (hasOverride!==undefined)? hasOverride : num(S.agHas);
+  const rinde = num(S.agRinde);
+  const kg = has*rinde, tn = kg/1000;
+  const tcC = num(S.params.tcCompra), tcV = num(S.params.tcVenta);
+  let precioKg = num(c.precioTn)/1000, notaPrecio="$/tn";
+  if(c.moneda==="USD"){ precioKg = num(c.precioTn)*tcC/1000; notaPrecio="USD/tn × TC compra $"+fm2(tcC); }
+  const ventas = kg*precioKg;
+  // comercialización
+  const usd=num(S.agComUsd), ars=num(S.agComArs), pctc=num(S.agComPct);
+  let comerc=0; const detCom=[];
+  if(usd>0){ const m=usd*tn*tcV; comerc+=m; detCom.push("USD "+fm2(usd)+"/tn × "+fm2(tn)+"tn × TC venta $"+fm2(tcV)+" = "+fm(m)); }
+  if(ars>0){ const m=ars*tn; comerc+=m; detCom.push("$"+fm2(ars)+"/tn × "+fm2(tn)+"tn = "+fm(m)); }
+  if(pctc>0){ const m=ventas*pctc/100; comerc+=m; detCom.push(fm2(pctc)+"% s/ventas = "+fm(m)); }
+  const pct = num(c.pct);
+  const gastos = ventas*pct/100;
+  const faltaTC = (c.moneda==="USD" && tcC<=0) || (usd>0 && tcV<=0);
+  return {has, rinde, kg, tn, precioKg, notaPrecio, ventas, comerc, detCom, gastos, pct, faltaTC, moneda:c.moneda};
+}
+function calcArrendamiento(has){
+  const u = num(S.arrUnidadHa);
+  const esSoja = S.arrTipo==="SOJA_QQ";
+  const p = esSoja? num(S.arrPrecioSoja) : num(S.arrPrecioNov);
+  const monto = has*u*p;
+  const det = fm2(has)+" has × "+fm2(u)+(esSoja?" qq/ha × $"+fm2(p)+"/qq":" kg/ha × $"+fm2(p)+"/kg");
+  return {monto, det, unidades: has*u, esSoja, precio:p};
+}
+
+function calc(){
+  const cuerpo = document.getElementById("balCuerpo");
+  const vered = document.getElementById("balVeredicto");
+  let html=""; let resultado=0; let ventasTot=0; let avisos=[];
+
+  const linea = (lbl,val,det,neg) =>
+    `<div class="bal-linea"><div>${lbl}${det?`<small>${det}</small>`:""}</div><div class="${neg?'neg':'pos'}">${neg?'−':''}${fm(Math.abs(val))}</div></div>`;
+
+  if(S.tipo==="GANADERO"){
+    const gan = calcGanaderia();
+    const arr = calcArrendamiento(num(S.arrHas));
+    html += linea("Ventas ganaderas", gan.ventas, gan.det.join("<br>"));
+    html += linea("Gastos ("+fm2(gan.pct)+"% s/ventas)", gan.gastos, "", true);
+    html += linea("Arrendamiento", arr.monto, arr.det + " → " + fm2(arr.unidades)+(arr.esSoja?" qq":" kg"), true);
+    ventasTot = gan.ventas;
+    resultado = gan.ventas - gan.gastos - arr.monto;
+    if(gan.ventas<=0) avisos.push("Tildá categorías y cargá cantidad y precio para ver las ventas.");
+  }
+  else if(S.tipo==="AGRICOLA"){
+    const ag = calcAgricultura();
+    const arr = calcArrendamiento(ag.has);
+    html += linea("Ventas "+S.agCultivo, ag.ventas,
+      fm2(ag.has)+" has × "+fm2(ag.rinde)+" kg/ha = "+fm2(ag.kg)+" kg × $"+fm2(ag.precioKg)+"/kg ("+ag.notaPrecio+")");
+    html += linea("Gastos "+S.agCultivo+" ("+fm2(ag.pct)+"% s/ventas)", ag.gastos, "", true);
+    if(ag.comerc>0) html += linea("Comercialización", ag.comerc, ag.detCom.join("<br>"), true);
+    html += linea("Arrendamiento", arr.monto, arr.det, true);
+    ventasTot = ag.ventas;
+    resultado = ag.ventas - ag.gastos - ag.comerc - arr.monto;
+    if(ag.faltaTC) avisos.push("⚠ Falta el TC mayorista (Parámetros) para convertir los USD.");
+    if(ag.ventas<=0) avisos.push("Cargá precio, has y rinde para ver las ventas.");
+  }
+  else { // MIXTO
+    const hasGan = num(S.mixHasGan), hasAgr = num(S.mixHasAgr);
+    const gan = calcGanaderia();
+    const ag = calcAgricultura(hasAgr);
+    const hasTot = hasGan+hasAgr;
+    const arr = calcArrendamiento(hasTot);
+    const arrGan = hasTot>0? arr.monto*hasGan/hasTot : 0;
+    const arrAgr = hasTot>0? arr.monto*hasAgr/hasTot : 0;
+
+    html += `<div style="font-weight:800;margin:4px 0;color:var(--verde)">🐄 Ganadería (${fm2(hasGan)} has)</div>`;
+    html += linea("Ventas ganaderas", gan.ventas, gan.det.join("<br>"));
+    html += linea("Gastos ("+fm2(gan.pct)+"%)", gan.gastos, "", true);
+    html += linea("Arrendamiento proporcional", arrGan, fm2(hasGan)+"/"+fm2(hasTot)+" has del total "+fm(arr.monto), true);
+    const balGan = gan.ventas-gan.gastos-arrGan;
+    html += linea("Subtotal ganadería", balGan, "", balGan<0);
+
+    html += `<div style="font-weight:800;margin:10px 0 4px;color:var(--verde)">🌱 Agricultura ${S.agCultivo} (${fm2(hasAgr)} has)</div>`;
+    html += linea("Ventas "+S.agCultivo, ag.ventas,
+      fm2(hasAgr)+" has × "+fm2(ag.rinde)+" kg/ha × $"+fm2(ag.precioKg)+"/kg ("+ag.notaPrecio+")");
+    html += linea("Gastos ("+fm2(ag.pct)+"%)", ag.gastos, "", true);
+    if(ag.comerc>0) html += linea("Comercialización", ag.comerc, ag.detCom.join("<br>"), true);
+    html += linea("Arrendamiento proporcional", arrAgr, fm2(hasAgr)+"/"+fm2(hasTot)+" has del total "+fm(arr.monto), true);
+    const balAgr = ag.ventas-ag.gastos-ag.comerc-arrAgr;
+    html += linea("Subtotal agricultura", balAgr, "", balAgr<0);
+
+    ventasTot = gan.ventas+ag.ventas;
+    resultado = balGan+balAgr;
+    if(ag.faltaTC) avisos.push("⚠ Falta el TC mayorista (Parámetros) para convertir los USD.");
+    if(hasTot<=0) avisos.push("Cargá las has ganaderas y agrícolas arriba.");
+  }
+
+  const marg = ventasTot>0? (resultado/ventasTot*100) : 0;
+  html += `<div class="bal-linea total"><div>RESULTADO</div><div class="${resultado<0?'neg':'pos'}">${fm(resultado)}</div></div>`;
+  cuerpo.innerHTML = html;
+  vered.innerHTML = `<div class="veredicto ${resultado>=0?'ok':'mal'}">${resultado>=0?'✔ GANANCIA proyectada':'✖ PÉRDIDA proyectada'} · Margen ${fm2(marg)}%</div>`
+    + (avisos.length? `<div class="aviso">${avisos.join("<br>")}</div>` : "");
+}
+
+/* ============================================================
+   SINCRONIZACIÓN ENTRE CELULARES (Firebase Realtime Database)
+   - La URL se pega una sola vez en cada teléfono (Parámetros)
+   - Cada cambio se sube (PUT REST); los demás lo reciben en
+     tiempo real por SSE (EventSource) + repaso cada 60 s
+   - Sin conexión: sigue todo en localStorage y sube al volver
+   - Conflictos: gana el último cambio (_mod = timestamp)
+   ============================================================ */
+const SYNCKEY = "proy_campo_syncurl";
+// URL preconfigurada: todos los celulares sincronizan solos con esta base.
+// (Se puede cambiar o desconectar desde Parámetros en cada teléfono.)
+const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
+let syncUrl = (localStorage.getItem(SYNCKEY) === null) ? SYNC_DEFAULT : localStorage.getItem(SYNCKEY);
+let syncTimer = null, syncES = null, syncPoll = null, aplicandoRemoto = false;
+
+function urlDatos(){
+  let u = (syncUrl||"").trim().replace(/\/+$/,"");
+  if(!u) return "";
+  if(!/^https?:\/\//.test(u)) u = "https://"+u;
+  if(!u.endsWith(".json")) u += "/proyecciones.json";
+  return u;
+}
+function setSyncEstado(msg, mal){
+  const el = document.getElementById("syncEstado");
+  if(el){ el.textContent = msg; el.classList.toggle("vieja", !!mal); }
+}
+function hora(){ const d=new Date(); return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2); }
+
+function programarPush(){
+  if(!urlDatos() || aplicandoRemoto) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(pushRemoto, 800);
+}
+async function pushRemoto(){
+  const u = urlDatos(); if(!u) return;
+  try{
+    const r = await fetch(u, {method:"PUT", body: JSON.stringify(S),
+                              headers:{"Content-Type":"application/json"}});
+    if(!r.ok) throw new Error(r.status);
+    setSyncEstado("☁️ Sincronizado — último cambio subido a las "+hora());
+  }catch(e){
+    setSyncEstado("⚠ Sin conexión: guardado solo en este teléfono. Se sube al reconectar.", true);
+  }
+}
+function recibirRemoto(d){
+  if(!d || typeof d !== "object") return;
+  if(JSON.stringify(d) === JSON.stringify(S)) return;        // es nuestro propio cambio
+  if((d._mod||0) < (S._mod||0)) return;                      // lo remoto es más viejo
+  aplicandoRemoto = true;
+  S = completarEstado(d);
+  guardarLocal();
+  volcarInputs(); calc();
+  aplicandoRemoto = false;
+  setSyncEstado("☁️ Sincronizado — datos recibidos a las "+hora());
+  toast("🔄 Datos actualizados desde otro teléfono");
+}
+function escucharRemoto(){
+  const u = urlDatos(); if(!u) return;
+  try{ syncES && syncES.close(); }catch(e){}
+  clearInterval(syncPoll);
+  // Tiempo real (SSE de Firebase)
+  if(window.EventSource){
+    try{
+      syncES = new EventSource(u);
+      const handler = ev => {
+        try{ const p = JSON.parse(ev.data);
+             if(p && p.path === "/" && p.data) recibirRemoto(p.data); }catch(e){}
+      };
+      syncES.addEventListener("put", handler);
+      syncES.addEventListener("patch", handler);
+    }catch(e){}
+  }
+  // Repaso de seguridad cada 60 s
+  syncPoll = setInterval(async ()=>{
+    try{ const d = await (await fetch(u)).json(); recibirRemoto(d); }catch(e){}
+  }, 60000);
+}
+async function conectarSync(avisar){
+  const inp = document.getElementById("pSyncUrl");
+  if(inp) syncUrl = inp.value.trim();
+  if(!syncUrl){ setSyncEstado("Sin sincronización: los datos quedan solo en este teléfono."); return; }
+  localStorage.setItem(SYNCKEY, syncUrl);
+  const u = urlDatos();
+  try{
+    const r = await fetch(u);
+    if(!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    if(d === null){
+      await pushRemoto();                       // base vacía → subimos lo de este teléfono
+      if(avisar) toast("✔ Conectado. Se subieron los datos de este teléfono a la base.");
+    }else if((d._mod||0) >= (S._mod||0)){
+      recibirRemoto(d);                          // la base tiene lo más nuevo
+      if(avisar) toast("✔ Conectado. Se bajaron los datos compartidos.");
+    }else{
+      await pushRemoto();                        // este teléfono tiene lo más nuevo
+      if(avisar) toast("✔ Conectado. Este teléfono tenía lo más nuevo y se subió.");
+    }
+    escucharRemoto();
+  }catch(e){
+    setSyncEstado("⚠ No se pudo conectar. Revisá la URL y que la base permita lectura/escritura.", true);
+    if(avisar) toast("No se pudo conectar con esa URL.");
+  }
+}
+async function probarSync(){
+  const inp = document.getElementById("pSyncUrl");
+  if(inp) syncUrl = inp.value.trim();
+  const u = urlDatos();
+  if(!u){ toast("Pegá primero la URL de Firebase"); return; }
+  try{
+    const r = await fetch(u);
+    if(!r.ok) throw new Error(r.status);
+    toast("✔ Conexión OK con la base");
+  }catch(e){ toast("✖ No responde: revisá la URL y las reglas de la base"); }
+}
+function desconectarSync(){
+  syncUrl = ""; localStorage.setItem(SYNCKEY, "");
+  try{ syncES && syncES.close(); }catch(e){}
+  clearInterval(syncPoll); clearTimeout(syncTimer);
+  const inp = document.getElementById("pSyncUrl"); if(inp) inp.value="";
+  setSyncEstado("Sin sincronización: los datos quedan solo en este teléfono.");
+  toast("Sincronización desactivada en este teléfono");
+}
+
+/* ============================================================
+   NAVEGACIÓN E INICIO
+   ============================================================ */
+function verVista(id, bt){
+  document.querySelectorAll(".vista").forEach(v=>v.classList.remove("activa"));
+  document.getElementById(id).classList.add("activa");
+  document.querySelectorAll("nav.principal button").forEach(b=>b.classList.remove("activo"));
+  bt.classList.add("activo");
+}
+function borrarTodo(){
+  if(!confirm("¿Borrar TODOS los datos guardados (precios, parámetros, cargas)?")) return;
+  if(urlDatos() && confirm("¿Borrarlos también de la base compartida (afecta a todos los teléfonos)?\nAceptar = borra en todos · Cancelar = solo este teléfono")){
+    fetch(urlDatos(), {method:"DELETE"}).finally(()=>{ localStorage.removeItem(LSKEY); location.reload(); });
+    return;
+  }
+  localStorage.removeItem(LSKEY); location.reload();
+}
+
+function volcarInputs(){
+  ["mixHasGan","mixHasAgr","agHas","agRinde","agComUsd","agComArs","agComPct"].forEach(id=>{
+    document.getElementById(id).value = S[id]||"";
+  });
+  document.getElementById("pPctGan").value = S.params.pctGan;
+  pintarCats(); pintarSelCultivos(); pintarPrecioCultivo();
+  pintarCultivosParam(); pintarKg(); pintarTC(); pintarArr();
+  setTipo(S.tipo);
+}
+function iniciar(){
+  cargar();
+  volcarInputs();
+  const inp = document.getElementById("pSyncUrl");
+  if(inp) inp.value = syncUrl;
+  if(syncUrl) conectarSync(false);
+}
+iniciar();
+</script>
+</body>
+</html>
