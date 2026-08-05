@@ -167,8 +167,9 @@
       <div class="campo-form"><label>Precio por tn <span id="lblMonPrecio">($/tn)</span></label>
         <input type="text" inputmode="decimal" id="agPrecioTn" onchange="cambioPrecioCultivo()">
         <div class="nota-fecha" id="fechaPrecioCultivo"></div></div>
-      <div class="campo-form" style="display:flex;align-items:flex-end">
-        <button class="btn peq linea" id="btBCR" style="width:100%" onclick="traerPrecioBCR()">⬇ Precio pizarra BCR</button></div>
+      <div class="campo-form" style="display:flex;align-items:flex-end;gap:8px">
+        <button class="btn peq linea" id="btBCR" style="flex:1" onclick="traerPrecioBCR()">⬇ Precio pizarra BCR</button>
+        <button class="btn peq sec" onclick="window.open('https://www.cac.bcr.com.ar/es/precios-de-pizarra','_blank')">🌐</button></div>
     </div>
     <div class="fila2">
       <div class="campo-form"><label>Has agrícolas</label>
@@ -389,10 +390,31 @@ function notaFecha(el, fecha, pref){
 function norm(t){ return String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," "); }
 
 async function fetchTexto(url, opts){
-  // 1º directo (por si el sitio permite CORS), 2º vía proxy allorigins
-  try{ const r = await fetch(url, opts); if(r.ok) return await r.text(); }catch(e){}
-  const r2 = await fetch(PROXY(url)); if(!r2.ok) throw new Error("Sin respuesta");
-  return await r2.text();
+  // El navegador no puede consultar directo otros sitios (CORS), así que se intenta
+  // directo y después por varios intermediarios públicos, en orden, hasta que uno responda.
+  const intentos = [
+    {u:url, tipo:"texto"},
+    {u:"https://corsproxy.io/?url="+encodeURIComponent(url), tipo:"texto"},
+    {u:"https://api.allorigins.win/raw?url="+encodeURIComponent(url), tipo:"texto"},
+    {u:"https://api.codetabs.com/v1/proxy?quest="+encodeURIComponent(url), tipo:"texto"},
+    {u:"https://api.allorigins.win/get?url="+encodeURIComponent(url), tipo:"json"},
+  ];
+  let ultimoError = "sin respuesta";
+  for(const i of intentos){
+    try{
+      const ctl = new AbortController();
+      const t = setTimeout(()=>ctl.abort(), 9000);   // 9 s por intento
+      const r = await fetch(i.u, Object.assign({signal:ctl.signal}, opts||{}));
+      clearTimeout(t);
+      if(!r.ok){ ultimoError = "HTTP "+r.status; continue; }
+      let texto;
+      if(i.tipo==="json"){ const j = await r.json(); texto = (j && j.contents) || ""; }
+      else texto = await r.text();
+      if(texto && texto.length > 150) return texto;
+      ultimoError = "respuesta vacía";
+    }catch(e){ ultimoError = (e && e.name==="AbortError") ? "tiempo agotado" : "sin conexión"; }
+  }
+  throw new Error(ultimoError);
 }
 
 /* getters genéricos input→estado */
@@ -536,7 +558,7 @@ async function traerPrecioBCR(){
     }else{
       toast("No se encontró "+cult+" en la pizarra BCR: cargalo a mano.");
     }
-  }catch(e){ toast("No se pudo conectar con BCR: cargá el precio a mano."); }
+  }catch(e){ toast("No respondió ningún intermediario ("+e.message+"). Reintentá en un rato o tocá 🌐 para ver la pizarra y cargarlo a mano."); }
   bt.innerHTML="⬇ Precio pizarra BCR"; bt.disabled=false;
 }
 
