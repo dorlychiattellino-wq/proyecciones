@@ -158,7 +158,8 @@
     <h3 class="tit">🌱 Ventas agrícolas</h3>
     <div class="fila2">
       <div class="campo-form"><label>Cultivo</label>
-        <select id="agCultivo" onchange="g('agCultivo');pintarPrecioCultivo();calc()"></select></div>
+        <select id="agCultivo" onchange="g('agCultivo');pintarPrecioCultivo();calc()"></select>
+        <div class="nota-fecha" id="obsCultivo" style="color:var(--verde)"></div></div>
       <div class="campo-form"><label>Moneda del precio</label>
         <select id="agMoneda" onchange="cambioMonedaCultivo()"><option value="ARS">$ / tn</option><option value="USD">USD / tn</option></select></div>
     </div>
@@ -327,9 +328,9 @@ function estadoInicial(){
     arrPrecioNov:"", arrPrecioNovFecha:"", arrPrecioNovNota:"",
     params:{
       pctGan:"30",
-      cultivos:{ "Maíz":{pctCon:"45",pctSin:"40",precioTn:"",moneda:"ARS",fecha:""},
-                 "Girasol":{pctCon:"45",pctSin:"40",precioTn:"",moneda:"ARS",fecha:""},
-                 "Soja":{pctCon:"45",pctSin:"40",precioTn:"",moneda:"ARS",fecha:""} },
+      cultivos:{ "Maíz":{pctCon:"45",pctSin:"40",obs:"",precioTn:"",moneda:"ARS",fecha:""},
+                 "Girasol":{pctCon:"45",pctSin:"40",obs:"",precioTn:"",moneda:"ARS",fecha:""},
+                 "Soja":{pctCon:"45",pctSin:"40",obs:"",precioTn:"",moneda:"ARS",fecha:""} },
       kgAnimal:{}, // se completa con defaults
       tcCompra:"", tcVenta:"", tcFecha:""
     }
@@ -354,6 +355,7 @@ function completarEstado(obj){
     const c = obj.params.cultivos[nom];
     if(c.pctSin===undefined) c.pctSin = (c.pct!==undefined)? c.pct : "40";
     if(c.pctCon===undefined) c.pctCon = (c.pct!==undefined)? c.pct : "45";
+    if(c.obs===undefined) c.obs = "";
     delete c.pct;
   }
   return obj;
@@ -501,6 +503,8 @@ function pintarPrecioCultivo(){
   document.getElementById("agPrecioTn").value = c.precioTn||"";
   document.getElementById("lblMonPrecio").textContent = (c.moneda==="USD")?"(USD/tn)":"($/tn)";
   notaFecha(document.getElementById("fechaPrecioCultivo"), c.fecha);
+  const o = document.getElementById("obsCultivo");
+  if(o) o.textContent = c.obs ? ("📝 % válidos para: "+c.obs) : "";
 }
 function cambioPrecioCultivo(){
   const c = S.params.cultivos[S.agCultivo]; if(!c) return;
@@ -707,6 +711,13 @@ function pintarCultivosParam(){
         onchange="S.params.cultivos['${cc}'].pctSin=this.value;guardar();calc()">
       <button class="x" onclick="quitarCultivo('${cc}')">✕</button>`;
     cont.appendChild(div);
+    const obs = document.createElement("div");
+    obs.style.cssText = "margin:-4px 0 12px";
+    obs.innerHTML = `<input type="text" style="font-size:13px;padding:8px 10px;background:#f7fafd"
+      placeholder="Observaciones: en qué condiciones valen estos % (ej: rinde promedio 2.000 kg/ha, flete corto)"
+      value="${(S.params.cultivos[c].obs||"").replace(/"/g,"&quot;")}"
+      onchange="S.params.cultivos['${cc}'].obs=this.value;guardar();pintarPrecioCultivo()">`;
+    cont.appendChild(obs);
   });
 }
 function agregarCultivo(){
@@ -714,7 +725,7 @@ function agregarCultivo(){
   const n = inp.value.trim(); if(!n) return;
   const nom = n.charAt(0).toUpperCase()+n.slice(1);
   if(S.params.cultivos[nom]){ toast("Ese cultivo ya existe"); return; }
-  S.params.cultivos[nom] = {pctCon:"45", pctSin:"40", precioTn:"", moneda:"ARS", fecha:""};
+  S.params.cultivos[nom] = {pctCon:"45", pctSin:"40", obs:"", precioTn:"", moneda:"ARS", fecha:""};
   inp.value=""; guardar(); pintarCultivosParam(); pintarSelCultivos(); pintarPrecioCultivo(); calc();
   toast("✔ Cultivo "+nom+" agregado (ajustá sus % de gastos)");
 }
