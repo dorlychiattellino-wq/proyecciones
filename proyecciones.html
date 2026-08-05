@@ -124,6 +124,9 @@
   <h2 class="sec">Campo a arrendar</h2>
   <p class="sub">Elegí el tipo de campo y cargá los datos para proyectar el balance.</p>
 
+  <div class="campo-form" style="margin-bottom:10px"><label>Nombre del campo</label>
+    <input type="text" id="nombreCampo" placeholder="Ej: La Esperanza — Ruta 3 km 120" onchange="g('nombreCampo');calc()"></div>
+
   <div class="sel-tipo">
     <button id="btAGR" onclick="setTipo('AGRICOLA')"><span class="ic">🌱</span>Agrícola</button>
     <button id="btGAN" onclick="setTipo('GANADERO')"><span class="ic">🐄</span>Ganadero</button>
@@ -217,9 +220,10 @@
 
   <!-- ============ BALANCE ============ -->
   <div class="tarjeta balance" id="cardBal">
-    <h3 class="tit">💰 Balance proyectado</h3>
+    <h3 class="tit" id="titBalance">💰 Balance proyectado</h3>
     <div id="balCuerpo"></div>
     <div id="balVeredicto"></div>
+    <button class="btn" style="margin-top:12px" id="btPDF" onclick="compartirPDF()">📄 Compartir PDF</button>
   </div>
 </section>
 
@@ -321,6 +325,7 @@ function estadoInicial(){
   CATS.forEach(c => cats[c.id] = {sel:false, cant:"", precio:"", fecha:""});
   return {
     tipo: "GANADERO",
+    nombreCampo:"",
     cats,
     agCultivo:"Soja", agHas:"", agRinde:"", agComUsd:"", agComArs:"", agComPct:"",
     mixHasGan:"", mixHasAgr:"",
@@ -820,20 +825,17 @@ function calcArrendamiento(has){
   return {monto, det, unidades: has*u, esSoja, precio:p};
 }
 
-function calc(){
-  const cuerpo = document.getElementById("balCuerpo");
-  const vered = document.getElementById("balVeredicto");
-  let html=""; let resultado=0; let ventasTot=0; let avisos=[];
-
-  const linea = (lbl,val,det,neg) =>
-    `<div class="bal-linea"><div>${lbl}${det?`<small>${det}</small>`:""}</div><div class="${neg?'neg':'pos'}">${neg?'−':''}${fm(Math.abs(val))}</div></div>`;
+function armarResumen(){
+  const items=[]; let resultado=0, ventasTot=0; const avisos=[];
+  const L=(label,val,det,neg)=>items.push({t:"linea",label,det:det||"",val,neg:!!neg});
+  const T=(label)=>items.push({t:"tit",label});
 
   if(S.tipo==="GANADERO"){
     const gan = calcGanaderia();
     const arr = calcArrendamiento(num(S.arrHas));
-    html += linea("Ventas ganaderas", gan.ventas, gan.det.join("<br>"));
-    html += linea("Gastos ("+fm2(gan.pct)+"% s/ventas)", gan.gastos, "", true);
-    html += linea("Arrendamiento", arr.monto, arr.det + " → " + fm2(arr.unidades)+(arr.esSoja?" qq":" kg"), true);
+    L("Ventas ganaderas", gan.ventas, gan.det.join("<br>"));
+    L("Gastos ("+fm2(gan.pct)+"% s/ventas)", gan.gastos, "", true);
+    L("Arrendamiento", arr.monto, arr.det + " → " + fm2(arr.unidades)+(arr.esSoja?" qq":" kg"), true);
     ventasTot = gan.ventas;
     resultado = gan.ventas - gan.gastos - arr.monto;
     if(gan.ventas<=0) avisos.push("Tildá categorías y cargá cantidad y precio para ver las ventas.");
@@ -841,11 +843,11 @@ function calc(){
   else if(S.tipo==="AGRICOLA"){
     const ag = calcAgricultura();
     const arr = calcArrendamiento(ag.has);
-    html += linea("Ventas "+S.agCultivo, ag.ventas,
+    L("Ventas "+S.agCultivo, ag.ventas,
       fm2(ag.has)+" has × "+fm2(ag.rinde)+" kg/ha = "+fm2(ag.kg)+" kg × $"+fm2(ag.precioKg)+"/kg ("+ag.notaPrecio+")");
-    html += linea("Gastos "+S.agCultivo+" ("+fm2(ag.pct)+"% s/ventas)", ag.gastos, ag.notaPct, true);
-    if(ag.comerc>0) html += linea("Comercialización", ag.comerc, ag.detCom.join("<br>"), true);
-    html += linea("Arrendamiento", arr.monto, arr.det, true);
+    L("Gastos "+S.agCultivo+" ("+fm2(ag.pct)+"% s/ventas)", ag.gastos, ag.notaPct, true);
+    if(ag.comerc>0) L("Comercialización", ag.comerc, ag.detCom.join("<br>"), true);
+    L("Arrendamiento", arr.monto, arr.det, true);
     ventasTot = ag.ventas;
     resultado = ag.ventas - ag.gastos - ag.comerc - arr.monto;
     if(ag.faltaTC) avisos.push("⚠ Falta el TC mayorista (Parámetros) para convertir los USD.");
@@ -860,33 +862,165 @@ function calc(){
     const arrGan = hasTot>0? arr.monto*hasGan/hasTot : 0;
     const arrAgr = hasTot>0? arr.monto*hasAgr/hasTot : 0;
 
-    html += `<div style="font-weight:800;margin:4px 0;color:var(--verde)">🐄 Ganadería (${fm2(hasGan)} has)</div>`;
-    html += linea("Ventas ganaderas", gan.ventas, gan.det.join("<br>"));
-    html += linea("Gastos ("+fm2(gan.pct)+"%)", gan.gastos, "", true);
-    html += linea("Arrendamiento proporcional", arrGan, fm2(hasGan)+"/"+fm2(hasTot)+" has del total "+fm(arr.monto), true);
+    T("🐄 Ganadería ("+fm2(hasGan)+" has)");
+    L("Ventas ganaderas", gan.ventas, gan.det.join("<br>"));
+    L("Gastos ("+fm2(gan.pct)+"%)", gan.gastos, "", true);
+    L("Arrendamiento proporcional", arrGan, fm2(hasGan)+"/"+fm2(hasTot)+" has del total "+fm(arr.monto), true);
     const balGan = gan.ventas-gan.gastos-arrGan;
-    html += linea("Subtotal ganadería", balGan, "", balGan<0);
+    L("Subtotal ganadería", balGan, "", balGan<0);
 
-    html += `<div style="font-weight:800;margin:10px 0 4px;color:var(--verde)">🌱 Agricultura ${S.agCultivo} (${fm2(hasAgr)} has)</div>`;
-    html += linea("Ventas "+S.agCultivo, ag.ventas,
+    T("🌱 Agricultura "+S.agCultivo+" ("+fm2(hasAgr)+" has)");
+    L("Ventas "+S.agCultivo, ag.ventas,
       fm2(hasAgr)+" has × "+fm2(ag.rinde)+" kg/ha × $"+fm2(ag.precioKg)+"/kg ("+ag.notaPrecio+")");
-    html += linea("Gastos ("+fm2(ag.pct)+"%)", ag.gastos, ag.notaPct, true);
-    if(ag.comerc>0) html += linea("Comercialización", ag.comerc, ag.detCom.join("<br>"), true);
-    html += linea("Arrendamiento proporcional", arrAgr, fm2(hasAgr)+"/"+fm2(hasTot)+" has del total "+fm(arr.monto), true);
+    L("Gastos ("+fm2(ag.pct)+"%)", ag.gastos, ag.notaPct, true);
+    if(ag.comerc>0) L("Comercialización", ag.comerc, ag.detCom.join("<br>"), true);
+    L("Arrendamiento proporcional", arrAgr, fm2(hasAgr)+"/"+fm2(hasTot)+" has del total "+fm(arr.monto), true);
     const balAgr = ag.ventas-ag.gastos-ag.comerc-arrAgr;
-    html += linea("Subtotal agricultura", balAgr, "", balAgr<0);
+    L("Subtotal agricultura", balAgr, "", balAgr<0);
 
     ventasTot = gan.ventas+ag.ventas;
     resultado = balGan+balAgr;
     if(ag.faltaTC) avisos.push("⚠ Falta el TC mayorista (Parámetros) para convertir los USD.");
     if(hasTot<=0) avisos.push("Cargá las has ganaderas y agrícolas arriba.");
   }
-
   const marg = ventasTot>0? (resultado/ventasTot*100) : 0;
-  html += `<div class="bal-linea total"><div>RESULTADO</div><div class="${resultado<0?'neg':'pos'}">${fm(resultado)}</div></div>`;
+  return {items, resultado, ventasTot, marg, avisos};
+}
+
+function calc(){
+  const tb=document.getElementById("titBalance");
+  if(tb) tb.textContent = "💰 Balance proyectado" + (S.nombreCampo? " — "+S.nombreCampo : "");
+  const cuerpo = document.getElementById("balCuerpo");
+  const vered = document.getElementById("balVeredicto");
+  const r = armarResumen();
+  let html="";
+  r.items.forEach((it,i)=>{
+    if(it.t==="tit")
+      html += `<div style="font-weight:800;margin:${i?10:4}px 0 4px;color:var(--verde)">${it.label}</div>`;
+    else
+      html += `<div class="bal-linea"><div>${it.label}${it.det?`<small>${it.det}</small>`:""}</div><div class="${it.neg?'neg':'pos'}">${it.neg?'−':''}${fm(Math.abs(it.val))}</div></div>`;
+  });
+  html += `<div class="bal-linea total"><div>RESULTADO</div><div class="${r.resultado<0?'neg':'pos'}">${fm(r.resultado)}</div></div>`;
   cuerpo.innerHTML = html;
-  vered.innerHTML = `<div class="veredicto ${resultado>=0?'ok':'mal'}">${resultado>=0?'✔ GANANCIA proyectada':'✖ PÉRDIDA proyectada'} · Margen ${fm2(marg)}%</div>`
-    + (avisos.length? `<div class="aviso">${avisos.join("<br>")}</div>` : "");
+  vered.innerHTML = `<div class="veredicto ${r.resultado>=0?'ok':'mal'}">${r.resultado>=0?'✔ GANANCIA proyectada':'✖ PÉRDIDA proyectada'} · Margen ${fm2(r.marg)}%</div>`
+    + (r.avisos.length? `<div class="aviso">${r.avisos.join("<br>")}</div>` : "");
+}
+
+/* ============================================================
+   PDF PARA COMPARTIR (WhatsApp, mail, etc.)
+   ============================================================ */
+function sinEmoji(t){ return String(t).replace(/[^\x20-\xFF]/g,"").replace(/\s+/g," ").trim(); }
+async function cargarJsPDF(){
+  if(window.jspdf) return;
+  await new Promise((res,rej)=>{
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    s.onload=res; s.onerror=()=>rej(new Error("No se pudo descargar el generador de PDF (¿sin señal?)"));
+    document.head.appendChild(s);
+  });
+}
+async function compartirPDF(){
+  const bt = document.getElementById("btPDF");
+  bt.innerHTML='<span class="spin">⏳</span> Armando PDF…'; bt.disabled=true;
+  try{
+    await cargarJsPDF();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:"mm", format:"a4"});
+    const W = 210, MI = 16, MD = 194;
+    let y = 0;
+
+    // encabezado azul
+    doc.setFillColor(13,44,84); doc.rect(0,0,W,26,"F");
+    doc.setTextColor(255,255,255);
+    doc.setFont("helvetica","bold"); doc.setFontSize(16);
+    doc.text(S.nombreCampo? ("Campo: "+sinEmoji(S.nombreCampo)) : "Proyecciones Campo", MI, 12);
+    doc.setFont("helvetica","normal"); doc.setFontSize(9);
+    const ahora = new Date();
+    doc.text("Generado el "+HOY()+" "+("0"+ahora.getHours()).slice(-2)+":"+("0"+ahora.getMinutes()).slice(-2)+" hs", MI, 19);
+    const tipoTxt = S.tipo==="AGRICOLA" ? "CAMPO AGRÍCOLA — "+S.agCultivo
+                  : S.tipo==="GANADERO" ? "CAMPO GANADERO" : "CAMPO MIXTO — "+S.agCultivo;
+    doc.setFontSize(11); doc.setFont("helvetica","bold");
+    doc.text(tipoTxt, MD, 12, {align:"right"});
+    y = 36;
+
+    const salto = (n)=>{ if(y+n>282){ doc.addPage(); y=16; } };
+    const r = armarResumen();
+
+    r.items.forEach(it=>{
+      if(it.t==="tit"){
+        salto(10); y+=3;
+        doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.setTextColor(21,101,192);
+        doc.text(sinEmoji(it.label), MI, y); y+=6;
+        return;
+      }
+      salto(8);
+      doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(20,32,46);
+      doc.text(sinEmoji(it.label), MI, y);
+      doc.setTextColor(it.neg?192:46, it.neg?59:158, it.neg?59:87);
+      doc.text((it.neg?"-":"")+fm(Math.abs(it.val)), MD, y, {align:"right"});
+      y+=4.5;
+      if(it.det){
+        doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(95,112,132);
+        const lineas = doc.splitTextToSize(sinEmoji(it.det.replace(/<br>/g," | ")), 165);
+        lineas.forEach(l=>{ salto(4); doc.text(l, MI+3, y); y+=3.8; });
+      }
+      y+=2;
+    });
+
+    // resultado
+    salto(22); y+=3;
+    doc.setDrawColor(189,211,236); doc.line(MI,y,MD,y); y+=8;
+    doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(20,32,46);
+    doc.text("RESULTADO", MI, y);
+    const ok = r.resultado>=0;
+    doc.setTextColor(ok?46:192, ok?158:59, ok?87:59);
+    doc.text(fm(r.resultado), MD, y, {align:"right"}); y+=9;
+    doc.setFillColor(ok?223:249, ok?242:227, ok?227:227);
+    doc.roundedRect(MI, y-5.5, MD-MI, 9, 2, 2, "F");
+    doc.setFontSize(10);
+    doc.text((ok?"GANANCIA proyectada":"PÉRDIDA proyectada")+"  ·  Margen "+fm2(r.marg)+"%", W/2, y, {align:"center"});
+    y+=12;
+
+    // referencias de precios usados
+    const refs=[];
+    if(S.tipo!=="GANADERO"){
+      const c=S.params.cultivos[S.agCultivo]||{};
+      if(c.precioTn) refs.push("Precio "+S.agCultivo+": "+c.precioTn+" "+(c.moneda==="USD"?"USD":"$")+"/tn (del "+(c.fecha||"-")+")");
+      if(c.obs) refs.push("% de gastos válidos para: "+c.obs);
+    }
+    if(S.tipo!=="AGRICOLA"){
+      CATS.forEach(cat=>{ const st=S.cats[cat.id];
+        if(st.sel && num(st.precio)>0) refs.push(cat.nom+": $"+st.precio+"/kg (precio del "+(st.fecha||"-")+")"); });
+    }
+    const esSojaArr = S.arrTipo==="SOJA_QQ";
+    const pArr = esSojaArr? S.arrPrecioSoja : S.arrPrecioNov;
+    if(num(pArr)>0) refs.push("Arrendamiento — "+(esSojaArr?("soja $"+pArr+"/qq (del "+(S.arrPrecioSojaFecha||"-")+")")
+      :("novillo $"+pArr+"/kg — "+(S.arrPrecioNovNota||"")+" (del "+(S.arrPrecioNovFecha||"-")+")")));
+    if(num(S.params.tcCompra)>0) refs.push("TC mayorista: compra $"+S.params.tcCompra+" / venta $"+S.params.tcVenta+" (del "+(S.params.tcFecha||"-")+")");
+    if(refs.length){
+      salto(8+refs.length*4);
+      doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.setTextColor(95,112,132);
+      doc.text("Precios de referencia usados:", MI, y); y+=4;
+      doc.setFont("helvetica","normal");
+      refs.forEach(t=>{ const ls=doc.splitTextToSize("• "+sinEmoji(t),172);
+        ls.forEach(l=>{ salto(4); doc.text(l, MI, y); y+=3.8; }); });
+    }
+
+    // compartir o descargar
+    const slugCampo = S.nombreCampo? S.nombreCampo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"").slice(0,30)+"_" : "";
+    const nombre = "proyeccion_"+slugCampo+(S.tipo==="AGRICOLA"?"agricola_"+S.agCultivo:S.tipo==="GANADERO"?"ganadero":"mixto").toLowerCase().replace(/[^a-z0-9_]/g,"")+"_"+HOY().replace(/\//g,"-")+".pdf";
+    const blob = doc.output("blob");
+    const archivo = new File([blob], nombre, {type:"application/pdf"});
+    if(navigator.canShare && navigator.canShare({files:[archivo]})){
+      await navigator.share({files:[archivo], title:"Proyección de campo", text:"Proyección "+tipoTxt});
+    }else{
+      doc.save(nombre);
+      toast("PDF descargado (este equipo no tiene menú de compartir; adjuntalo a mano en WhatsApp).");
+    }
+  }catch(e){
+    if(e && e.name!=="AbortError") toast("No se pudo armar/compartir el PDF: "+(e.message||e));
+  }
+  bt.innerHTML="📄 Compartir PDF"; bt.disabled=false;
 }
 
 /* ============================================================
@@ -1031,7 +1165,7 @@ function borrarTodo(){
 }
 
 function volcarInputs(){
-  ["mixHasGan","mixHasAgr","agHas","agRinde","agComUsd","agComArs","agComPct"].forEach(id=>{
+  ["nombreCampo","mixHasGan","mixHasAgr","agHas","agRinde","agComUsd","agComArs","agComPct"].forEach(id=>{
     document.getElementById(id).value = S[id]||"";
   });
   document.getElementById("pPctGan").value = S.params.pctGan;
