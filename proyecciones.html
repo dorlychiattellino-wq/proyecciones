@@ -235,7 +235,7 @@
   <div class="tarjeta">
     <h3 class="tit">🐄 Gastos campo ganadero</h3>
     <div class="campo-form"><label>% de gastos sobre ventas ganaderas (sin contar arrendamiento)</label>
-      <input type="text" inputmode="decimal" id="pPctGan" onchange="gp('pctGan','pPctGan');calc()"></div>
+      <input type="text" inputmode="decimal" id="pPctGan" onchange="cambiarPctGan(this)"></div>
   </div>
 
   <div class="tarjeta">
@@ -278,7 +278,7 @@
       <button class="btn peq gris" onclick="desconectarSync()">Desconectar</button>
     </div>
     <div class="nota-fecha" id="syncEstado" style="margin-top:8px">Sin sincronización: los datos quedan solo en este teléfono.</div>
-    <div class="aviso">Con la URL cargada, precios, parámetros y porcentajes se comparten entre todos los teléfonos que tengan la misma URL: cuando uno carga un dato, los demás lo ven al instante. Si no hay señal, la app sigue funcionando con lo guardado en el teléfono y sincroniza al volver la conexión.</div>
+    <div class="aviso">Sincronización <b>en tiempo real</b>: lo que carga un teléfono aparece al instante en los demás. Cada dato se guarda por separado, así un teléfono nunca puede pisar los datos que no tocó. Sin señal, los cambios quedan guardados en el teléfono y se suben solos al volver la conexión.</div>
   </div>
 
   <div class="tarjeta">
@@ -344,6 +344,7 @@ function estadoInicial(){
 }
 let S;
 function completarEstado(obj){
+  delete obj._mod;
   // completar campos faltantes (versiones viejas o datos remotos incompletos)
   const base = estadoInicial();
   for(const k in base) if(obj[k]===undefined) obj[k]=base[k];
@@ -373,7 +374,7 @@ function cargar(){
   guardarLocal();
 }
 function guardarLocal(){ try{ localStorage.setItem(LSKEY, JSON.stringify(S)); }catch(e){} }
-function guardar(){ S._mod = Date.now(); guardarLocal(); programarPush(); }
+function guardar(){ guardarLocal(); programarPush(); }
 
 /* ---------- helpers ---------- */
 function num(v){
@@ -720,6 +721,22 @@ async function traerTC(){
 /* ============================================================
    PARÁMETROS: cultivos + kg animal
    ============================================================ */
+function cambiarPctGan(el){
+  const viejo = S.params.pctGan;
+  if(String(el.value)===String(viejo)) return;
+  if(confirm("Vas a cambiar el % de gastos del campo GANADERO:\n\n   "+(viejo||"(vacío)")+"%  →  "+el.value+"%\n\nSe actualiza en todos los teléfonos. ¿Confirmás?")){
+    S.params.pctGan = el.value; guardar(); calc();
+  }else el.value = viejo;
+}
+function cambiarPctCultivo(nom, campo, el){
+  const c = S.params.cultivos[nom]; if(!c) return;
+  const viejo = c[campo];
+  if(String(el.value)===String(viejo)) return;
+  const etiqueta = campo==="pctCon" ? "% CON gtos com." : "% SIN gtos com.";
+  if(confirm("Vas a cambiar el "+etiqueta+" de "+nom.toUpperCase()+":\n\n   "+(viejo||"(vacío)")+"%  →  "+el.value+"%\n\nSe actualiza en todos los teléfonos. ¿Confirmás?")){
+    c[campo] = el.value; guardar(); calc();
+  }else el.value = viejo;
+}
 function pintarCultivosParam(){
   const cont = document.getElementById("listaCultivos");
   cont.innerHTML = `<div class="cult-fila" style="grid-template-columns:1fr 70px 70px 30px;margin-bottom:4px">
@@ -733,9 +750,9 @@ function pintarCultivosParam(){
     div.style.gridTemplateColumns = "1fr 70px 70px 30px";
     div.innerHTML = `<div style="font-weight:700">${c}</div>
       <input type="text" inputmode="decimal" value="${S.params.cultivos[c].pctCon}" placeholder="%"
-        onchange="S.params.cultivos['${cc}'].pctCon=this.value;guardar();calc()">
+        onchange="cambiarPctCultivo('${cc}','pctCon',this)">
       <input type="text" inputmode="decimal" value="${S.params.cultivos[c].pctSin}" placeholder="%"
-        onchange="S.params.cultivos['${cc}'].pctSin=this.value;guardar();calc()">
+        onchange="cambiarPctCultivo('${cc}','pctSin',this)">
       <button class="x" onclick="quitarCultivo('${cc}')">✕</button>`;
     cont.appendChild(div);
     const obs = document.createElement("div");
@@ -1024,107 +1041,167 @@ async function compartirPDF(){
 }
 
 /* ============================================================
-   SINCRONIZACIÓN ENTRE CELULARES (Firebase Realtime Database)
-   - La URL se pega una sola vez en cada teléfono (Parámetros)
-   - Cada cambio se sube (PUT REST); los demás lo reciben en
-     tiempo real por SSE (EventSource) + repaso cada 60 s
-   - Sin conexión: sigue todo en localStorage y sube al volver
-   - Conflictos: gana el último cambio (_mod = timestamp)
+   SINCRONIZACIÓN EN TIEMPO REAL (SDK de Firebase, como cosecha)
+   - Cada dato se guarda POR SEPARADO (ruta por ruta): un teléfono
+     nunca puede pisar los datos que no tocó → no se borran los %
+   - Escucha en vivo: lo que carga uno aparece al instante en todos
+   - Sin señal: los cambios quedan en el teléfono (pendientes) y se
+     suben solos al volver la conexión, aunque cierres la app
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
-// URL preconfigurada: todos los celulares sincronizan solos con esta base.
-// (Se puede cambiar o desconectar desde Parámetros en cada teléfono.)
+const PENDKEY = "proy_campo_pendientes";
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 let syncUrl = (localStorage.getItem(SYNCKEY) === null) ? SYNC_DEFAULT : localStorage.getItem(SYNCKEY);
-let syncTimer = null, syncES = null, syncPoll = null, aplicandoRemoto = false;
+let appFB=null, db=null, refDatos=null, refCon=null;
+let conectado=false, listoSync=false, aplicandoRemoto=false;
+let lastSync=null;   // copia del estado tal como está en la nube
+let pendientes = {}; // rutas cambiadas acá y aún no confirmadas en la nube
+try{ pendientes = JSON.parse(localStorage.getItem(PENDKEY)||"{}"); }catch(e){ pendientes={}; }
+let pushTimer=null;
 
-function urlDatos(){
-  let u = (syncUrl||"").trim().replace(/\/+$/,"");
-  if(!u) return "";
-  if(!/^https?:\/\//.test(u)) u = "https://"+u;
-  if(!u.endsWith(".json")) u += "/proyecciones.json";
-  return u;
+function copiar(o){ return JSON.parse(JSON.stringify(o)); }
+function aplanar(obj, base, out){
+  out=out||{};
+  for(const k in obj){
+    const v=obj[k], ruta=base? base+"/"+k : k;
+    if(v!==null && typeof v==="object") aplanar(v, ruta, out);
+    else out[ruta]=v;
+  }
+  return out;
 }
+function setPorRuta(obj, ruta, val){
+  const p=ruta.split("/");
+  let o=obj;
+  for(let i=0;i<p.length-1;i++){
+    if(typeof o[p[i]]!=="object" || o[p[i]]===null) o[p[i]]={};
+    o=o[p[i]];
+  }
+  if(val===null) delete o[p[p.length-1]];
+  else o[p[p.length-1]]=val;
+}
+function calcularDiff(nuevo, viejo){
+  const a=aplanar(nuevo,"",{}), b=aplanar(viejo||{},"",{});
+  const d={};
+  for(const r in a) if(b[r]!==a[r]) d[r]=a[r];
+  for(const r in b) if(!(r in a)) d[r]=null;
+  return d;
+}
+function guardarPend(){ try{ localStorage.setItem(PENDKEY, JSON.stringify(pendientes)); }catch(e){} }
+
 function setSyncEstado(msg, mal){
   const el = document.getElementById("syncEstado");
   if(el){ el.textContent = msg; el.classList.toggle("vieja", !!mal); }
 }
 function hora(){ const d=new Date(); return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2); }
+function urlDatos(){
+  let u=(syncUrl||"").trim().replace(/\/+$/,"");
+  if(!u) return "";
+  if(!/^https?:\/\//.test(u)) u="https://"+u;
+  return u;
+}
 
+/* cada guardar() calcula QUÉ cambió y anota solo esas rutas como pendientes */
 function programarPush(){
-  if(!urlDatos() || aplicandoRemoto) return;
-  clearTimeout(syncTimer);
-  syncTimer = setTimeout(pushRemoto, 800);
+  if(aplicandoRemoto) return;
+  const base = (lastSync!==null)? lastSync : (window.__Sarranque||{});
+  const d = calcularDiff(S, base);
+  delete d["_mod"];
+  if(Object.keys(d).length){ Object.assign(pendientes, d); guardarPend(); }
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushPendientes, 400);
 }
-async function pushRemoto(){
-  const u = urlDatos(); if(!u) return;
+async function pushPendientes(){
+  if(!refDatos || !listoSync) return;
+  const rutas = Object.keys(pendientes);
+  if(!rutas.length) return;
+  const lote = {};
+  rutas.forEach(r=>lote[r]=pendientes[r]);
   try{
-    const r = await fetch(u, {method:"PUT", body: JSON.stringify(S),
-                              headers:{"Content-Type":"application/json"}});
-    if(!r.ok) throw new Error(r.status);
-    setSyncEstado("☁️ Sincronizado — último cambio subido a las "+hora());
+    await refDatos.update(lote);
+    if(lastSync===null) lastSync={};
+    for(const r in lote){
+      setPorRuta(lastSync, r, lote[r]);
+      if(pendientes[r]===lote[r]) delete pendientes[r];
+    }
+    guardarPend();
+    setSyncEstado("☁️ Sincronizado en tiempo real — último cambio subido "+hora());
   }catch(e){
-    setSyncEstado("⚠ Sin conexión: guardado solo en este teléfono. Se sube al reconectar.", true);
+    setSyncEstado("⚠ Sin conexión: "+Object.keys(pendientes).length+" cambio(s) guardados en este teléfono. Se suben solos al volver la señal.", true);
   }
 }
-function recibirRemoto(d){
-  if(!d || typeof d !== "object") return;
-  if(JSON.stringify(d) === JSON.stringify(S)) return;        // es nuestro propio cambio
-  if((d._mod||0) < (S._mod||0)) return;                      // lo remoto es más viejo
-  aplicandoRemoto = true;
-  S = completarEstado(d);
-  guardarLocal();
-  volcarInputs(); calc();
-  aplicandoRemoto = false;
-  setSyncEstado("☁️ Sincronizado — datos recibidos a las "+hora());
-  toast("🔄 Datos actualizados desde otro teléfono");
-}
-function escucharRemoto(){
-  const u = urlDatos(); if(!u) return;
-  try{ syncES && syncES.close(); }catch(e){}
-  clearInterval(syncPoll);
-  // Tiempo real (SSE de Firebase)
-  if(window.EventSource){
-    try{
-      syncES = new EventSource(u);
-      const handler = ev => {
-        try{ const p = JSON.parse(ev.data);
-             if(p && p.path === "/" && p.data) recibirRemoto(p.data); }catch(e){}
-      };
-      syncES.addEventListener("put", handler);
-      syncES.addEventListener("patch", handler);
-    }catch(e){}
+
+function alRecibir(remoto){
+  if(remoto===null || remoto===undefined){
+    // base vacía: se sube todo el estado de este teléfono por primera vez
+    lastSync={};
+    const todo=aplanar(S,"",{}); delete todo["_mod"];
+    Object.assign(pendientes, todo); guardarPend();
+    listoSync=true; pushPendientes();
+    return;
   }
-  // Repaso de seguridad cada 60 s
-  syncPoll = setInterval(async ()=>{
-    try{ const d = await (await fetch(u)).json(); recibirRemoto(d); }catch(e){}
-  }, 60000);
+  delete remoto._mod;
+  const rem = completarEstado(copiar(remoto));
+  delete rem._mod;
+  lastSync = copiar(rem);
+  // encima de lo de la nube van los cambios propios todavía no subidos
+  for(const r in pendientes) setPorRuta(rem, r, pendientes[r]);
+  const igual = JSON.stringify(rem)===JSON.stringify(S);
+  const primeraVez = !listoSync;
+  listoSync=true;
+  if(!igual){
+    aplicandoRemoto=true;
+    S = rem; guardarLocal();
+    volcarInputs(); calc();
+    aplicandoRemoto=false;
+    if(!primeraVez) toast("🔄 Datos actualizados desde otro teléfono");
+  }else{ guardarLocal(); }
+  setSyncEstado("☁️ Sincronizado en tiempo real ("+hora()+")");
+  pushPendientes();
 }
+
+function cargarFirebaseSDK(){
+  if(window.firebase && firebase.database) return Promise.resolve();
+  const base="https://www.gstatic.com/firebasejs/9.23.0/";
+  const libs=["firebase-app-compat.js","firebase-database-compat.js"];
+  return libs.reduce((p,l)=>p.then(()=>new Promise((res,rej)=>{
+    const s=document.createElement("script");
+    s.src=base+l; s.onload=res; s.onerror=()=>rej(new Error("Sin internet para cargar el sincronizador"));
+    document.head.appendChild(s);
+  })), Promise.resolve());
+}
+
+async function iniciarFirebase(avisar){
+  const u=urlDatos();
+  if(!u){ setSyncEstado("Sin sincronización: los datos quedan solo en este teléfono."); return; }
+  try{
+    await cargarFirebaseSDK();
+    // soltar la conexión anterior si la hubiera
+    try{ refDatos && refDatos.off(); refCon && refCon.off(); }catch(e){}
+    appFB = firebase.initializeApp({databaseURL:u}, "pc"+Date.now());
+    db = appFB.database();
+    refDatos = db.ref("proyecciones");
+    refCon = db.ref(".info/connected");
+    refCon.on("value", s=>{
+      conectado = s.val()===true;
+      if(conectado){ pushPendientes(); }
+      else if(listoSync) setSyncEstado("⚠ Sin señal: trabajando con lo guardado en este teléfono. Se sincroniza al volver.", true);
+    });
+    refDatos.on("value", s=>alRecibir(s.val()),
+      err=>setSyncEstado("⚠ La base rechazó la conexión (revisá las reglas en Firebase).", true));
+    if(avisar) toast("✔ Sincronización en tiempo real activada");
+  }catch(e){
+    setSyncEstado("⚠ Sin internet ahora: la app funciona con lo guardado. Se reintenta solo.", true);
+    // reintentar cuando vuelva la conexión
+    window.addEventListener("online", ()=>iniciarFirebase(false), {once:true});
+  }
+}
+
 async function conectarSync(avisar){
   const inp = document.getElementById("pSyncUrl");
   if(inp) syncUrl = inp.value.trim();
-  if(!syncUrl){ setSyncEstado("Sin sincronización: los datos quedan solo en este teléfono."); return; }
   localStorage.setItem(SYNCKEY, syncUrl);
-  const u = urlDatos();
-  try{
-    const r = await fetch(u);
-    if(!r.ok) throw new Error(r.status);
-    const d = await r.json();
-    if(d === null){
-      await pushRemoto();                       // base vacía → subimos lo de este teléfono
-      if(avisar) toast("✔ Conectado. Se subieron los datos de este teléfono a la base.");
-    }else if((d._mod||0) >= (S._mod||0)){
-      recibirRemoto(d);                          // la base tiene lo más nuevo
-      if(avisar) toast("✔ Conectado. Se bajaron los datos compartidos.");
-    }else{
-      await pushRemoto();                        // este teléfono tiene lo más nuevo
-      if(avisar) toast("✔ Conectado. Este teléfono tenía lo más nuevo y se subió.");
-    }
-    escucharRemoto();
-  }catch(e){
-    setSyncEstado("⚠ No se pudo conectar. Revisá la URL y que la base permita lectura/escritura.", true);
-    if(avisar) toast("No se pudo conectar con esa URL.");
-  }
+  listoSync=false; lastSync=null;
+  await iniciarFirebase(avisar);
 }
 async function probarSync(){
   const inp = document.getElementById("pSyncUrl");
@@ -1132,16 +1209,17 @@ async function probarSync(){
   const u = urlDatos();
   if(!u){ toast("Pegá primero la URL de Firebase"); return; }
   try{
-    const r = await fetch(u);
+    const r = await fetch(u+"/proyecciones.json?shallow=true");
     if(!r.ok) throw new Error(r.status);
+    await r.json();
     toast("✔ Conexión OK con la base");
   }catch(e){ toast("✖ No responde: revisá la URL y las reglas de la base"); }
 }
 function desconectarSync(){
-  syncUrl = ""; localStorage.setItem(SYNCKEY, "");
-  try{ syncES && syncES.close(); }catch(e){}
-  clearInterval(syncPoll); clearTimeout(syncTimer);
-  const inp = document.getElementById("pSyncUrl"); if(inp) inp.value="";
+  syncUrl=""; localStorage.setItem(SYNCKEY,"");
+  try{ refDatos && refDatos.off(); refCon && refCon.off(); }catch(e){}
+  refDatos=null; refCon=null; listoSync=false; lastSync=null;
+  const inp=document.getElementById("pSyncUrl"); if(inp) inp.value="";
   setSyncEstado("Sin sincronización: los datos quedan solo en este teléfono.");
   toast("Sincronización desactivada en este teléfono");
 }
@@ -1157,11 +1235,12 @@ function verVista(id, bt){
 }
 function borrarTodo(){
   if(!confirm("¿Borrar TODOS los datos guardados (precios, parámetros, cargas)?")) return;
-  if(urlDatos() && confirm("¿Borrarlos también de la base compartida (afecta a todos los teléfonos)?\nAceptar = borra en todos · Cancelar = solo este teléfono")){
-    fetch(urlDatos(), {method:"DELETE"}).finally(()=>{ localStorage.removeItem(LSKEY); location.reload(); });
+  localStorage.removeItem(LSKEY); localStorage.removeItem(PENDKEY);
+  if(refDatos && confirm("¿Borrarlos también de la base compartida (afecta a TODOS los teléfonos)?\nAceptar = borra en todos · Cancelar = solo este teléfono")){
+    refDatos.remove().finally(()=>location.reload());
     return;
   }
-  localStorage.removeItem(LSKEY); location.reload();
+  location.reload();
 }
 
 function volcarInputs(){
@@ -1175,10 +1254,11 @@ function volcarInputs(){
 }
 function iniciar(){
   cargar();
+  window.__Sarranque = JSON.parse(JSON.stringify(S));
   volcarInputs();
   const inp = document.getElementById("pSyncUrl");
   if(inp) inp.value = syncUrl;
-  if(syncUrl) conectarSync(false);
+  if(syncUrl) iniciarFirebase(false);
 }
 iniciar();
 </script>
