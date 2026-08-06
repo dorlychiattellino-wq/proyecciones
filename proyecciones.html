@@ -107,7 +107,7 @@
 
 <header>
   <div class="head-row">
-    <div class="logo"><div class="escudo">🌾</div><h1>Proyecciones Campo</h1></div>
+    <div class="logo"><div class="escudo">🌾</div><h1>Proyecciones Campo</h1><span id="syncDot" title="Estado de sincronización" style="font-size:15px">⚪</span></div>
     <div class="chip-tc" id="chipTC">TC: —</div>
   </div>
 </header>
@@ -1051,9 +1051,14 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 8;   // subir este número en cada actualización del archivo
+const VERSION_APP = 9;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
-let syncUrl = (localStorage.getItem(SYNCKEY) === null) ? SYNC_DEFAULT : localStorage.getItem(SYNCKEY);
+const OFFKEY = "proy_campo_syncoff";
+let syncUrl = (function(){
+  if(localStorage.getItem(OFFKEY)==="1") return localStorage.getItem(SYNCKEY)||"";
+  const g = localStorage.getItem(SYNCKEY);
+  return (g && g.trim()) ? g : SYNC_DEFAULT;   // vacío o viejo → se cura solo con la URL fija
+})();
 let appFB=null, db=null, refDatos=null, refCon=null;
 let conectado=false, listoSync=false, aplicandoRemoto=false;
 let lastSync=null;   // copia del estado tal como está en la nube
@@ -1093,6 +1098,13 @@ function guardarPend(){ try{ localStorage.setItem(PENDKEY, JSON.stringify(pendie
 function setSyncEstado(msg, mal){
   const el = document.getElementById("syncEstado");
   if(el){ el.textContent = msg; el.classList.toggle("vieja", !!mal); }
+  const dot = document.getElementById("syncDot");
+  if(dot){
+    if(/Sincronizado/.test(msg)) dot.textContent="☁️";
+    else if(mal) dot.textContent="⚠️";
+    else dot.textContent="⚪";
+    dot.title = msg;
+  }
 }
 function hora(){ const d=new Date(); return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2); }
 function urlDatos(){
@@ -1199,11 +1211,15 @@ async function iniciarFirebase(avisar){
         setTimeout(()=>{ location.href = location.pathname + "?v=" + Date.now(); }, 1800);
       }
     });
+    if(window.__reintentoFB){ clearInterval(window.__reintentoFB); window.__reintentoFB=null; }
     if(avisar) toast("✔ Sincronización en tiempo real activada");
   }catch(e){
-    setSyncEstado("⚠ Sin internet ahora: la app funciona con lo guardado. Se reintenta solo.", true);
-    // reintentar cuando vuelva la conexión
+    setSyncEstado("⚠ Sin internet ahora: la app funciona con lo guardado. Se reintenta solo cada 20 s.", true);
     window.addEventListener("online", ()=>iniciarFirebase(false), {once:true});
+    if(!window.__reintentoFB) window.__reintentoFB = setInterval(()=>{
+      if(refDatos){ clearInterval(window.__reintentoFB); window.__reintentoFB=null; return; }
+      iniciarFirebase(false);
+    }, 20000);
   }
 }
 
@@ -1211,6 +1227,7 @@ async function conectarSync(avisar){
   const inp = document.getElementById("pSyncUrl");
   if(inp) syncUrl = inp.value.trim();
   localStorage.setItem(SYNCKEY, syncUrl);
+  localStorage.removeItem(OFFKEY);
   listoSync=false; lastSync=null;
   await iniciarFirebase(avisar);
 }
@@ -1227,7 +1244,7 @@ async function probarSync(){
   }catch(e){ toast("✖ No responde: revisá la URL y las reglas de la base"); }
 }
 function desconectarSync(){
-  syncUrl=""; localStorage.setItem(SYNCKEY,"");
+  syncUrl=""; localStorage.setItem(SYNCKEY,""); localStorage.setItem(OFFKEY,"1");
   try{ refDatos && refDatos.off(); refCon && refCon.off(); }catch(e){}
   refDatos=null; refCon=null; listoSync=false; lastSync=null;
   const inp=document.getElementById("pSyncUrl"); if(inp) inp.value="";
