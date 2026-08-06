@@ -702,9 +702,9 @@ function cambioTC(){
   S.params.tcVenta = document.getElementById("pTcVenta").value;
   S.params.tcFecha = HOY(); guardar(); pintarTC(); calc();
 }
-async function traerTC(){
+async function traerTC(auto){
   const bt = document.getElementById("btTC");
-  bt.innerHTML='<span class="spin">⏳</span> Consultando…'; bt.disabled=true;
+  if(!auto && bt){ bt.innerHTML='<span class="spin">⏳</span> Consultando…'; bt.disabled=true; }
   try{
     let d;
     try{ d = await (await fetch(URL_TC)).json(); }
@@ -712,10 +712,11 @@ async function traerTC(){
     if(d && d.compra){
       S.params.tcCompra = String(d.compra); S.params.tcVenta = String(d.venta||d.compra);
       S.params.tcFecha = HOY(); guardar(); pintarTC(); calc();
-      toast("✔ TC mayorista: compra $"+fm2(d.compra)+" · venta $"+fm2(d.venta));
-    } else toast("Respuesta inválida de DolarApi.");
-  }catch(e){ toast("Sin conexión: cargá el TC a mano."); }
-  bt.innerHTML="⬇ Actualizar TC (DolarApi)"; bt.disabled=false;
+      toast(auto? ("✔ TC mayorista actualizado: C $"+fm2(d.compra)+" · V $"+fm2(d.venta))
+                : ("✔ TC mayorista: compra $"+fm2(d.compra)+" · venta $"+fm2(d.venta)));
+    } else if(!auto) toast("Respuesta inválida de DolarApi.");
+  }catch(e){ if(!auto) toast("Sin conexión: cargá el TC a mano."); }
+  if(bt){ bt.innerHTML="⬇ Actualizar TC (DolarApi)"; bt.disabled=false; }
 }
 
 /* ============================================================
@@ -1050,6 +1051,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
+const VERSION_APP = 8;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 let syncUrl = (localStorage.getItem(SYNCKEY) === null) ? SYNC_DEFAULT : localStorage.getItem(SYNCKEY);
 let appFB=null, db=null, refDatos=null, refCon=null;
@@ -1188,6 +1190,15 @@ async function iniciarFirebase(avisar){
     });
     refDatos.on("value", s=>alRecibir(s.val()),
       err=>setSyncEstado("⚠ La base rechazó la conexión (revisá las reglas en Firebase).", true));
+    // auto-actualización: si otro teléfono ya corre una versión más nueva, recargar
+    db.ref("versionApp").on("value", s=>{
+      const v = s.val();
+      if(v===null || v<VERSION_APP){ db.ref("versionApp").set(VERSION_APP); }
+      else if(v>VERSION_APP){
+        toast("🔄 Hay una versión nueva de la app: actualizando…");
+        setTimeout(()=>{ location.href = location.pathname + "?v=" + Date.now(); }, 1800);
+      }
+    });
     if(avisar) toast("✔ Sincronización en tiempo real activada");
   }catch(e){
     setSyncEstado("⚠ Sin internet ahora: la app funciona con lo guardado. Se reintenta solo.", true);
@@ -1259,6 +1270,9 @@ function iniciar(){
   const inp = document.getElementById("pSyncUrl");
   if(inp) inp.value = syncUrl;
   if(syncUrl) iniciarFirebase(false);
+  // al abrir, actualizar el TC mayorista automáticamente (si hay señal);
+  // se espera unos segundos para que primero llegue lo de la nube
+  setTimeout(()=>{ traerTC(true); }, 2500);
 }
 iniciar();
 </script>
