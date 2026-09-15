@@ -1121,7 +1121,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 11;   // subir este número en cada actualización del archivo
+const VERSION_APP = 12;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -1425,12 +1425,17 @@ function ppFiltrados(){
   regs.sort((a,b)=> f.orden==="asc" ? (a.fecha||"").localeCompare(b.fecha||"") : (b.fecha||"").localeCompare(a.fecha||""));
   return regs;
 }
+function ppHayFiltro(){
+  const f = ppFil;
+  return !!(f.q || f.proveedor || f.insumo || f.detalles.length || f.estado || f.desde || f.hasta);
+}
 function ppComparar(regs){
   const out = {};
-  if(!ppFil.detalles.length) return out;
+  if(!ppHayFiltro()) return out;                 // sin filtros no se comparan precios
   const con = regs.map(r=>({id:r.id, pu:ppPU(r)})).filter(x=>x.pu!=null);
   if(con.length<2) return out;
   const mn = Math.min(...con.map(x=>x.pu)), mx = Math.max(...con.map(x=>x.pu));
+  if(mn===mx) return out;                        // todos iguales: no se resalta nada
   con.forEach(x=> out[x.id] = x.pu===mn ? "min" : x.pu===mx ? "max" : "mid");
   return out;
 }
@@ -1483,7 +1488,7 @@ function ppPintarFiltros(){
       ${f.detalles.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
         ${f.detalles.map(d=>`<span class="pp-chip">${ppH(d)}<button onclick="ppTogDet('${ppH(d).replace(/'/g,"&#39;")}')">✕</button></span>`).join("")}
         <button class="btn peq gris" onclick="ppSetFil('detalles',[])">quitar todos</button></div>
-        <div class="aviso">Se muestran solo esos detalles y se resalta 🟩 el más barato, 🟥 el más caro y 🟨 los intermedios (por precio unitario en pesos con IVA).</div>` : ""}</div>` : ""}
+        <div class="aviso">Se muestran solo esos detalles, ordenados por precio.</div>` : ""}</div>` : ""}
     <div class="fila3">
       <div class="campo-form"><label>Estado</label><select onchange="ppSetFil('estado',this.value)">
         <option value=""${f.estado===""?" selected":""}>Todos</option>
@@ -1532,7 +1537,13 @@ function ppPintarListado(regs){
         <button class="pp-ico" title="Cerrar" onclick="ppCerrar('${r.id}')">📁</button>
         <button class="pp-ico" title="Borrar" onclick="ppBorrar('${r.id}')">🗑️</button></td></tr>`;
   }).join("");
-  cont.innerHTML = `<h3 class="tit">📋 Listado (${regs.length})</h3>
+  const leyenda = Object.keys(cmp).length
+    ? `<div class="aviso" style="margin:0 0 10px">Comparando lo filtrado por precio unitario en pesos con IVA:
+        <span style="background:${PP_CMP.min};padding:1px 6px;border-radius:4px">más barato</span>
+        <span style="background:${PP_CMP.mid};padding:1px 6px;border-radius:4px">intermedio</span>
+        <span style="background:${PP_CMP.max};padding:1px 6px;border-radius:4px">más caro</span></div>`
+    : `<div class="aviso" style="margin:0 0 10px">Usá cualquier filtro (insumo, proveedor, búsqueda, fechas…) y se resaltan el más barato, los intermedios y el más caro.</div>`;
+  cont.innerHTML = `<h3 class="tit">📋 Listado (${regs.length})</h3>${leyenda}
     <div class="pp-scroll"><table class="pp-tab">
     <thead><tr><th onclick="ppSetFil('orden', ppFil.orden==='asc'?'desc':'asc')" style="cursor:pointer">Fecha ${ppFil.orden==="asc"?"▲":"▼"}</th><th>Proveedor</th><th>Insumo / detalle</th><th>Cant.</th><th>P. unit.</th><th>Total</th><th>Estado</th><th></th></tr></thead>
     <tbody>${filas}</tbody></table></div>`;
