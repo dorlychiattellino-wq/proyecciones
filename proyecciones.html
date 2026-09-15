@@ -99,6 +99,16 @@
   .cult-fila .x{background:none;border:none;color:var(--rojo);font-size:19px;cursor:pointer;font-weight:800}
   .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--verde-osc);color:#fff;padding:11px 20px;border-radius:24px;font-size:14px;box-shadow:var(--sombra);z-index:99;opacity:0;pointer-events:none;transition:opacity .3s;max-width:90%;text-align:center}
   .toast.ver{opacity:1}
+  .pp-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .pp-tab{width:100%;border-collapse:collapse;font-size:12.5px;min-width:760px}
+  .pp-tab th{background:var(--verde);color:#fff;text-align:left;padding:8px 7px;font-size:11px;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
+  .pp-tab td{padding:7px;border-bottom:1px solid var(--gris-cl);vertical-align:top}
+  .pp-tab small{font-size:11px}
+  .pp-chip{background:var(--verde);color:#fff;border-radius:14px;padding:3px 6px 3px 10px;font-size:12.5px;display:inline-flex;align-items:center;gap:4px}
+  .pp-chip button{background:none;border:none;color:#fff;font-weight:800;cursor:pointer;font-size:13px;padding:0 3px}
+  .pp-mini{border:1px solid var(--gris-cl);background:#fff;border-radius:8px;padding:4px 7px;font-size:11px;cursor:pointer;margin:1px 0;color:var(--gris)}
+  .pp-mini.on{background:#eaf2fb;border-color:var(--verde);color:var(--verde);font-weight:700}
+  .pp-ico{background:none;border:none;font-size:16px;cursor:pointer;padding:2px 3px}
   .spin{display:inline-block;animation:gira 1s linear infinite}
   @keyframes gira{to{transform:rotate(360deg)}}
 </style>
@@ -114,6 +124,7 @@
 
 <nav class="principal">
   <button class="activo" data-v="vSim" onclick="verVista('vSim',this)">📊 Simulador</button>
+  <button data-v="vPresu" onclick="verVista('vPresu',this)">💰 Presupuestos</button>
   <button data-v="vParam" onclick="verVista('vParam',this)">⚙️ Parámetros</button>
 </nav>
 
@@ -225,6 +236,59 @@
     <div id="balVeredicto"></div>
     <button class="btn" style="margin-top:12px" id="btPDF" onclick="compartirPDF()">📄 Compartir PDF</button>
   </div>
+</section>
+
+<!-- ==================== PRESUPUESTOS ==================== -->
+<section id="vPresu" class="vista">
+  <h2 class="sec">Presupuestos de insumos</h2>
+  <p class="sub">Precios que pasan los proveedores. Los importes en dólares se convierten con el dólar BNA de hoy hasta que el registro se marca como <b>abonado</b>: ahí queda congelado el tipo de cambio del día de pago.</p>
+
+  <div class="tarjeta" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+    <div id="ppTC">Dólar BNA: —</div>
+    <button class="btn peq linea" id="ppBtTC" onclick="ppTraerTC(false)">⬇ Actualizar dólar BNA</button>
+  </div>
+
+  <div class="tarjeta">
+    <h3 class="tit" id="ppTitForm">➕ Nuevo presupuesto</h3>
+    <div class="fila2">
+      <div class="campo-form"><label>Fecha</label><input type="date" id="pp_fecha"></div>
+      <div class="campo-form"><label>Proveedor</label><input type="text" id="pp_prov" list="ppProvs" placeholder="Ej: Zabala (Tres Algarrobos)"></div>
+    </div>
+    <div class="fila3">
+      <div class="campo-form"><label>Insumo</label><input type="text" id="pp_insumo" list="ppInsumos" placeholder="Ej: Tranquera" onchange="ppPintarDatalists()"></div>
+      <div class="campo-form"><label>Marca</label><input type="text" id="pp_marca" list="ppMarcas" placeholder="opcional"></div>
+      <div class="campo-form"><label>Detalle</label><input type="text" id="pp_variedad" list="ppDetalles" placeholder="Ej: de caño 4 mts x 1.40"></div>
+    </div>
+    <div class="fila3">
+      <div class="campo-form"><label>Cantidad</label><input type="text" inputmode="decimal" id="pp_cant" placeholder="1"></div>
+      <div class="campo-form"><label>Unidad</label><input type="text" id="pp_unidad" list="ppUnidades" placeholder="unidad"></div>
+      <div class="campo-form"><label>Moneda</label><select id="pp_moneda"><option value="ARS">Pesos ($)</option><option value="USD">Dólares (US$)</option></select></div>
+    </div>
+    <div class="fila2">
+      <div class="campo-form"><label>Precio unitario</label><input type="text" inputmode="decimal" id="pp_precio" placeholder="0"></div>
+      <div class="campo-form"><label>IVA</label><select id="pp_iva"><option value="incl">Incluido en el precio</option><option value="10.5">+ 10,5 %</option><option value="21">+ 21 %</option><option value="0">Sin IVA</option></select></div>
+    </div>
+    <div class="campo-form"><label>Observaciones</label><input type="text" id="pp_obs" placeholder="plazo de pago, puesto en campo, etc."></div>
+    <div class="fila-botones">
+      <button class="btn peq" id="ppBtGuardar" onclick="ppGuardar()">💾 Guardar</button>
+      <button class="btn peq gris" id="ppBtCancelar" onclick="ppCancelar()" style="display:none">Cancelar</button>
+    </div>
+    <datalist id="ppProvs"></datalist><datalist id="ppInsumos"></datalist><datalist id="ppMarcas"></datalist><datalist id="ppDetalles"></datalist><datalist id="ppUnidades"></datalist>
+  </div>
+
+  <div class="tarjeta">
+    <h3 class="tit">🔎 Filtros</h3>
+    <div id="ppFiltros"></div>
+    <div class="fila-botones">
+      <button class="btn peq sec" id="ppBtPDF" onclick="ppPDF()">📄 PDF / compartir</button>
+      <button class="btn peq linea" onclick="ppCSV()">⬇ CSV</button>
+      <button class="btn peq gris" onclick="ppLimpiarFiltros()">Limpiar filtros</button>
+    </div>
+  </div>
+
+  <div class="tarjeta" id="ppTotales"></div>
+  <div class="tarjeta" id="ppListado"></div>
+  <div class="tarjeta" id="ppCerrados" style="display:none"></div>
 </section>
 
 <!-- ==================== PARÁMETROS ==================== -->
@@ -339,7 +403,9 @@ function estadoInicial(){
                  "Soja":{pctCon:"45",pctSin:"40",obs:"",precioTn:"",moneda:"ARS",fecha:""} },
       kgAnimal:{}, // se completa con defaults
       tcCompra:"", tcVenta:"", tcFecha:""
-    }
+    },
+    presu:{},              // presupuestos de insumos: {id: {...}}
+    presuTC:{venta:"",fecha:""}   // dólar BNA vendedor usado en presupuestos
   };
 }
 let S;
@@ -1051,7 +1117,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 9;   // subir este número en cada actualización del archivo
+const VERSION_APP = 10;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -1271,6 +1337,449 @@ function borrarTodo(){
   location.reload();
 }
 
+/* ============================================================
+   PRESUPUESTOS DE INSUMOS
+   - Mismo módulo que la app Stock Ganadero, adaptado a esta app
+   - Los registros viven en S.presu → se guardan en el teléfono y
+     se sincronizan solos con el resto de los datos
+   - Importes en USD: se convierten con el dólar BNA vendedor de hoy.
+     Al marcar ABONADO queda congelado el TC del día de pago.
+     Al CERRAR un registro no pagado también se congela; si se vuelve
+     a abrir, toma otra vez el dólar del día.
+   ============================================================ */
+const PP_CMP = {min:"#8fe08a", max:"#f5a09a", mid:"#ffe066"};
+const PP_URL_BNA = "https://dolarapi.com/v1/dolares/oficial";
+let ppFil = {q:"",proveedor:"",insumo:"",detalles:[],estado:"",desde:"",hasta:"",orden:"desc"};
+let ppEdit = "";
+let ppVerCer = false;
+
+function ppH(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+function ppTodos(){ const o=S.presu||{}; return Object.keys(o).filter(k=>o[k]).map(k=>Object.assign({},o[k],{id:k})); }
+function ppTcHoy(){ return num(S.presuTC && S.presuTC.venta); }
+function ppTcDe(r){
+  if(r.abonado && num(r.tcPago)>0) return num(r.tcPago);
+  if(r.cerrado && num(r.tcCierre)>0) return num(r.tcCierre);
+  return ppTcHoy();
+}
+function ppCalc(r){
+  const cant = num(r.cantidad)||0, p = num(r.precio)||0;
+  const iva = (r.iva==="incl"||r.iva===undefined||r.iva==="") ? 0 : num(r.iva);
+  const bruto = cant * p * (1 + iva/100);
+  const tc = ppTcDe(r);
+  if(r.moneda==="USD") return {tc, usdTotal:bruto, arsTotal: tc>0 ? bruto*tc : null};
+  return {tc, arsTotal:bruto, usdTotal: tc>0 ? bruto/tc : null};
+}
+function ppPU(r){ const c=ppCalc(r); if(c.arsTotal==null) return null; const cant=num(r.cantidad)||0; return cant>0 ? c.arsTotal/cant : c.arsTotal; }
+function ppFmARS(n){ return n==null ? "—" : "$ " + n.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function ppFmUSD(n){ return n==null ? "—" : "US$ " + n.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function ppFmF(f){ if(!f) return "—"; const p=String(f).split("-"); return p.length===3 ? p[2]+"/"+p[1]+"/"+p[0] : f; }
+function ppHoyISO(){ const d=new Date(); return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2); }
+
+/* listas para los desplegables, armadas con lo que ya se cargó */
+function ppListaDe(campo, filtro){
+  const set = new Map();
+  ppTodos().forEach(r=>{
+    if(filtro && filtro.insumo && norm(r.insumo||"")!==norm(filtro.insumo)) return;
+    const v = (r[campo]||"").trim();
+    if(v && !set.has(norm(v))) set.set(norm(v), v);
+  });
+  return [...set.values()].sort((a,b)=>a.localeCompare(b,"es"));
+}
+function ppOpts(lista, sel, vacio){
+  return `<option value="">${ppH(vacio||"Todos")}</option>` +
+    lista.map(v=>`<option value="${ppH(v)}"${norm(v)===norm(sel||"")?" selected":""}>${ppH(v)}</option>`).join("");
+}
+
+/* ---------- filtrado ---------- */
+function ppFiltrados(){
+  const f = ppFil;
+  let regs = ppTodos().filter(r=>!r.cerrado).filter(r=>{
+    if(f.proveedor && norm(r.proveedor||"")!==norm(f.proveedor)) return false;
+    if(f.insumo && norm(r.insumo||"")!==norm(f.insumo)) return false;
+    if(f.detalles.length && !f.detalles.some(d=>norm(d)===norm(r.variedad||""))) return false;
+    if(f.estado==="pres" && (r.comprado||r.abonado)) return false;
+    if(f.estado==="comp" && !(r.comprado && !r.abonado)) return false;
+    if(f.estado==="abon" && !r.abonado) return false;
+    if(f.desde && (r.fecha||"") < f.desde) return false;
+    if(f.hasta && (r.fecha||"") > f.hasta) return false;
+    if(f.q){
+      const t = norm([r.proveedor,r.insumo,r.marca,r.variedad,r.obs].join(" "));
+      if(!norm(f.q).split(" ").filter(Boolean).every(p=>t.includes(p))) return false;
+    }
+    return true;
+  });
+  regs.sort((a,b)=> f.orden==="asc" ? (a.fecha||"").localeCompare(b.fecha||"") : (b.fecha||"").localeCompare(a.fecha||""));
+  return regs;
+}
+function ppComparar(regs){
+  const out = {};
+  if(!ppFil.detalles.length) return out;
+  const con = regs.map(r=>({id:r.id, pu:ppPU(r)})).filter(x=>x.pu!=null);
+  if(con.length<2) return out;
+  const mn = Math.min(...con.map(x=>x.pu)), mx = Math.max(...con.map(x=>x.pu));
+  con.forEach(x=> out[x.id] = x.pu===mn ? "min" : x.pu===mx ? "max" : "mid");
+  return out;
+}
+function ppCerradosLista(){ return ppTodos().filter(r=>r.cerrado).sort((a,b)=>(b.cerradoEn||"").localeCompare(a.cerradoEn||"")); }
+
+/* ---------- pintar ---------- */
+function ppRender(){
+  if(!document.getElementById("ppListado")) return;
+  ppPintarTC();
+  ppPintarDatalists();
+  ppPintarFiltros();
+  const regs = ppFiltrados();
+  ppPintarTotales(regs);
+  ppPintarListado(regs);
+  ppPintarCerrados();
+}
+function ppPintarTC(){
+  const el = document.getElementById("ppTC"); if(!el) return;
+  const v = ppTcHoy();
+  el.innerHTML = v>0
+    ? `Dólar BNA vendedor <b>$ ${fm2(v)}</b> <small style="color:var(--gris)">(${ppH((S.presuTC&&S.presuTC.fecha)||"")})</small>`
+    : `<span style="color:var(--rojo)">Sin dólar cargado: los importes en USD no se pueden convertir.</span>`;
+}
+function ppPintarDatalists(){
+  const p = (id, lista) => { const el=document.getElementById(id); if(el) el.innerHTML = lista.map(v=>`<option value="${ppH(v)}">`).join(""); };
+  p("ppProvs", ppListaDe("proveedor"));
+  p("ppInsumos", ppListaDe("insumo"));
+  p("ppMarcas", ppListaDe("marca"));
+  p("ppDetalles", ppListaDe("variedad", {insumo:(document.getElementById("pp_insumo")||{}).value}));
+  p("ppUnidades", ["unidad","rollo","kg","tn","litro","bolsa","metro","dosis"]);
+}
+function ppPintarFiltros(){
+  const f = ppFil, cont = document.getElementById("ppFiltros"); if(!cont) return;
+  const dets = f.insumo ? ppListaDe("variedad",{insumo:f.insumo}) : [];
+  const libres = dets.filter(d=>!f.detalles.some(x=>norm(x)===norm(d)));
+  cont.innerHTML = `
+    <div class="campo-form"><label>Buscar</label>
+      <input type="text" id="ppF_q" value="${ppH(f.q)}" placeholder="proveedor, insumo, marca, detalle, obs…" oninput="ppSetFil('q',this.value,true)"></div>
+    <div class="fila2">
+      <div class="campo-form"><label>Proveedor</label><select onchange="ppSetFil('proveedor',this.value)">${ppOpts(ppListaDe("proveedor"), f.proveedor)}</select></div>
+      <div class="campo-form"><label>Insumo</label><select onchange="ppSetFil('insumo',this.value)">${ppOpts(ppListaDe("insumo"), f.insumo)}</select></div>
+    </div>
+    ${f.insumo && dets.length ? `<div class="campo-form"><label>Detalle de ${ppH(f.insumo)}</label>
+      <select onchange="if(this.value)ppTogDet(this.value); this.value='';">${ppOpts(libres,"","— Agregar detalle para comparar —")}</select>
+      ${f.detalles.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+        ${f.detalles.map(d=>`<span class="pp-chip">${ppH(d)}<button onclick="ppTogDet('${ppH(d).replace(/'/g,"&#39;")}')">✕</button></span>`).join("")}
+        <button class="btn peq gris" onclick="ppSetFil('detalles',[])">quitar todos</button></div>
+        <div class="aviso">Se muestran solo esos detalles y se resalta 🟩 el más barato, 🟥 el más caro y 🟨 los intermedios (por precio unitario en pesos con IVA).</div>` : ""}</div>` : ""}
+    <div class="fila3">
+      <div class="campo-form"><label>Estado</label><select onchange="ppSetFil('estado',this.value)">
+        <option value=""${f.estado===""?" selected":""}>Todos</option>
+        <option value="pres"${f.estado==="pres"?" selected":""}>Solo presupuestado</option>
+        <option value="comp"${f.estado==="comp"?" selected":""}>Comprado sin pagar</option>
+        <option value="abon"${f.estado==="abon"?" selected":""}>Abonado</option></select></div>
+      <div class="campo-form"><label>Desde</label><input type="date" value="${ppH(f.desde)}" onchange="ppSetFil('desde',this.value)"></div>
+      <div class="campo-form"><label>Hasta</label><input type="date" value="${ppH(f.hasta)}" onchange="ppSetFil('hasta',this.value)"></div>
+    </div>`;
+}
+function ppPintarTotales(regs){
+  const cont = document.getElementById("ppTotales"); if(!cont) return;
+  let tot=0, pres=0, comp=0, abon=0;
+  regs.forEach(r=>{ const c=ppCalc(r); const v=c.arsTotal||0; tot+=v; if(r.abonado)abon+=v; else if(r.comprado)comp+=v; else pres+=v; });
+  const caja = (tit,val,color)=>`<div style="flex:1;min-width:140px;background:#f4f8fd;border:1px solid var(--gris-cl);border-radius:10px;padding:10px">
+    <div style="font-size:10px;font-weight:800;letter-spacing:.4px;color:var(--gris);text-transform:uppercase">${tit}</div>
+    <div style="font-size:16px;font-weight:800;color:${color||"var(--tinta)"}">${ppFmARS(val)}</div></div>`;
+  cont.innerHTML = `<h3 class="tit">📊 Totales de lo filtrado (${regs.length})</h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${caja("Total listado", tot)}
+      ${caja("Presupuestado (sin comprar)", pres, "var(--verde)")}
+      ${caja("Comprado, pendiente de pago", comp, "var(--trigo)")}
+      ${caja("Abonado", abon, "var(--verde-ok)")}
+    </div>`;
+}
+function ppPintarListado(regs){
+  const cont = document.getElementById("ppListado"); if(!cont) return;
+  if(!regs.length){ cont.innerHTML = `<h3 class="tit">📋 Listado</h3><p class="sub" style="margin:0">No hay registros con esos filtros. Cargá uno arriba.</p>`; return; }
+  const cmp = ppComparar(regs);
+  const filas = regs.map(r=>{
+    const c = ppCalc(r), usd = r.moneda==="USD";
+    const bg = cmp[r.id] ? `background:${PP_CMP[cmp[r.id]]}` : (r.abonado?"opacity:.75":r.comprado?"background:#fff8ee":"");
+    const ivaTxt = (r.iva==="incl"||!r.iva) ? "incl." : "+"+r.iva+"%";
+    return `<tr style="${bg}">
+      <td>${ppFmF(r.fecha)}</td>
+      <td>${ppH(r.proveedor||"—")}</td>
+      <td><b>${ppH(r.insumo||"—")}</b>${r.marca?`<br><small>${ppH(r.marca)}</small>`:""}${r.variedad?`<br><small style="color:var(--gris)">${ppH(r.variedad)}</small>`:""}${r.obs?`<br><small style="color:var(--gris)">📝 ${ppH(r.obs)}</small>`:""}</td>
+      <td style="text-align:right;white-space:nowrap">${r.cantidad||"—"} ${ppH(r.unidad||"")}</td>
+      <td style="text-align:right;white-space:nowrap">${usd?ppFmUSD(num(r.precio)):ppFmARS(num(r.precio))}<br><small style="color:var(--gris)">${ivaTxt}</small></td>
+      <td style="text-align:right;white-space:nowrap"><b>${ppFmARS(c.arsTotal)}</b><br><small style="color:var(--gris)">${ppFmUSD(c.usdTotal)}${usd&&c.tc?" · TC "+fm2(c.tc):""}</small></td>
+      <td style="text-align:center;white-space:nowrap">
+        <button class="pp-mini ${r.comprado?"on":""}" onclick="ppTogComprado('${r.id}')">${r.comprado?"✅ comprado":"marcar comprado"}</button><br>
+        <button class="pp-mini ${r.abonado?"on":""}" onclick="ppTogAbonado('${r.id}')">${r.abonado?"💵 abonado "+ppFmF(r.fechaPago):"marcar pagado"}</button></td>
+      <td style="white-space:nowrap">
+        <button class="pp-ico" title="Editar" onclick="ppEditar('${r.id}')">✏️</button>
+        <button class="pp-ico" title="Cerrar" onclick="ppCerrar('${r.id}')">📁</button>
+        <button class="pp-ico" title="Borrar" onclick="ppBorrar('${r.id}')">🗑️</button></td></tr>`;
+  }).join("");
+  cont.innerHTML = `<h3 class="tit">📋 Listado (${regs.length})</h3>
+    <div class="pp-scroll"><table class="pp-tab">
+    <thead><tr><th onclick="ppSetFil('orden', ppFil.orden==='asc'?'desc':'asc')" style="cursor:pointer">Fecha ${ppFil.orden==="asc"?"▲":"▼"}</th><th>Proveedor</th><th>Insumo / detalle</th><th>Cant.</th><th>P. unit.</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+    <tbody>${filas}</tbody></table></div>`;
+}
+function ppPintarCerrados(){
+  const cont = document.getElementById("ppCerrados"); if(!cont) return;
+  const cer = ppCerradosLista();
+  if(!cer.length){ cont.style.display="none"; return; }
+  cont.style.display="";
+  cont.innerHTML = `<h3 class="tit" style="display:flex;justify-content:space-between;align-items:center">📁 Cerrados (${cer.length})
+      <button class="btn peq gris" onclick="ppVerCer=!ppVerCer;ppPintarCerrados()">${ppVerCer?"Ocultar":"Ver"}</button></h3>
+    <p class="sub" style="margin:0 0 8px">No cuentan en el listado ni en los totales. Al abrir uno vuelve con todos sus datos; si estaba abonado en dólares conserva el TC del pago, si nunca se pagó vuelve a tomar el dólar del día.</p>
+    ${ppVerCer ? `<div class="pp-scroll"><table class="pp-tab">
+      <thead><tr><th>Fecha</th><th>Proveedor</th><th>Insumo / detalle</th><th>Cant.</th><th>Total</th><th>Estado</th><th>Cerrado</th><th></th></tr></thead><tbody>
+      ${cer.map(r=>{ const c=ppCalc(r); return `<tr style="opacity:.85">
+        <td>${ppFmF(r.fecha)}</td><td>${ppH(r.proveedor||"—")}</td>
+        <td><b>${ppH(r.insumo||"—")}</b>${r.variedad?`<br><small style="color:var(--gris)">${ppH(r.variedad)}</small>`:""}</td>
+        <td style="text-align:right">${r.cantidad||"—"} ${ppH(r.unidad||"")}</td>
+        <td style="text-align:right;white-space:nowrap"><b>${ppFmARS(c.arsTotal)}</b>${r.moneda==="USD"?`<br><small style="color:var(--gris)">${ppFmUSD(c.usdTotal)}${c.tc?" · TC "+fm2(c.tc):""}</small>`:""}</td>
+        <td style="text-align:center;font-size:12px">${r.abonado?"💵 abonado":r.comprado?"✅ comprado":"presupuesto"}</td>
+        <td style="white-space:nowrap;font-size:12px">${r.cerradoEn?ppFmF(r.cerradoEn.slice(0,10)):"—"}</td>
+        <td style="white-space:nowrap"><button class="btn peq linea" onclick="ppAbrir('${r.id}')">🔓 Abrir</button> <button class="pp-ico" onclick="ppBorrar('${r.id}')">🗑️</button></td></tr>`; }).join("")}
+      </tbody></table></div>` : ""}`;
+}
+
+/* ---------- acciones ---------- */
+function ppSetFil(k,v,sinPintar){
+  if(k==="insumo") ppFil.detalles = [];
+  ppFil[k] = v;
+  if(sinPintar){ const regs=ppFiltrados(); ppPintarTotales(regs); ppPintarListado(regs); }
+  else ppRender();
+}
+function ppTogDet(d){
+  const i = ppFil.detalles.findIndex(x=>norm(x)===norm(d));
+  if(i>=0) ppFil.detalles.splice(i,1); else ppFil.detalles.push(d);
+  ppRender();
+}
+function ppLimpiarFiltros(){ ppFil = {q:"",proveedor:"",insumo:"",detalles:[],estado:"",desde:"",hasta:"",orden:"desc"}; ppRender(); }
+
+function ppVal(id){ const el=document.getElementById(id); return el? el.value.trim() : ""; }
+function ppGuardar(){
+  const r = {
+    fecha: ppVal("pp_fecha") || ppHoyISO(),
+    proveedor: ppVal("pp_prov"),
+    insumo: ppVal("pp_insumo"),
+    marca: ppVal("pp_marca"),
+    variedad: ppVal("pp_variedad"),
+    cantidad: ppVal("pp_cant"),
+    unidad: ppVal("pp_unidad"),
+    moneda: ppVal("pp_moneda") || "ARS",
+    precio: ppVal("pp_precio"),
+    iva: ppVal("pp_iva") || "incl",
+    obs: ppVal("pp_obs")
+  };
+  if(!r.insumo) return toast("Poné al menos el insumo.");
+  if(!(num(r.precio)>0)) return toast("Poné el precio.");
+  if(!S.presu) S.presu = {};
+  if(ppEdit){
+    const v = S.presu[ppEdit] || {};
+    S.presu[ppEdit] = Object.assign({}, v, r);
+    toast("💾 Presupuesto actualizado");
+  }else{
+    const id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+    S.presu[id] = Object.assign({comprado:false, abonado:false, cerrado:false}, r);
+    toast("💾 Presupuesto guardado");
+  }
+  guardar(); ppCancelar(); ppRender();
+}
+function ppCancelar(){
+  ppEdit = "";
+  ["pp_prov","pp_insumo","pp_marca","pp_variedad","pp_cant","pp_unidad","pp_precio","pp_obs"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
+  const f=document.getElementById("pp_fecha"); if(f) f.value = ppHoyISO();
+  const m=document.getElementById("pp_moneda"); if(m) m.value="ARS";
+  const i=document.getElementById("pp_iva"); if(i) i.value="incl";
+  document.getElementById("ppTitForm").textContent = "➕ Nuevo presupuesto";
+  document.getElementById("ppBtGuardar").textContent = "💾 Guardar";
+  document.getElementById("ppBtCancelar").style.display = "none";
+}
+function ppEditar(id){
+  const r = (S.presu||{})[id]; if(!r) return;
+  ppEdit = id;
+  const set=(k,v)=>{ const el=document.getElementById(k); if(el) el.value = v||""; };
+  set("pp_fecha", r.fecha); set("pp_prov", r.proveedor); set("pp_insumo", r.insumo);
+  set("pp_marca", r.marca); set("pp_variedad", r.variedad); set("pp_cant", r.cantidad);
+  set("pp_unidad", r.unidad); set("pp_moneda", r.moneda||"ARS"); set("pp_precio", r.precio);
+  set("pp_iva", r.iva||"incl"); set("pp_obs", r.obs);
+  document.getElementById("ppTitForm").textContent = "✏️ Editando presupuesto";
+  document.getElementById("ppBtGuardar").textContent = "💾 Guardar cambios";
+  document.getElementById("ppBtCancelar").style.display = "";
+  ppPintarDatalists();
+  document.getElementById("ppTitForm").scrollIntoView({behavior:"smooth", block:"center"});
+}
+function ppBorrar(id){
+  const r = (S.presu||{})[id]; if(!r) return;
+  if(!confirm("¿Borrar el registro de "+(r.insumo||"")+" · "+(r.proveedor||"")+"?")) return;
+  delete S.presu[id]; guardar(); ppRender(); toast("🗑️ Registro borrado");
+}
+function ppTogComprado(id){
+  const r = (S.presu||{})[id]; if(!r) return;
+  r.comprado = !r.comprado;
+  if(!r.comprado){ r.abonado=false; r.fechaPago=""; r.tcPago=""; }
+  guardar(); ppRender();
+}
+function ppTogAbonado(id){
+  const r = (S.presu||{})[id]; if(!r) return;
+  if(r.abonado){ r.abonado=false; r.fechaPago=""; r.tcPago=""; }
+  else{
+    r.abonado = true; r.comprado = true;
+    r.fechaPago = ppHoyISO();
+    r.tcPago = r.moneda==="USD" ? String(ppTcHoy()||"") : "";
+  }
+  guardar(); ppRender();
+}
+function ppCerrar(id){
+  const r = (S.presu||{})[id]; if(!r) return;
+  if(!confirm("¿Cerrar este registro ("+(r.insumo||"")+" · "+(r.proveedor||"")+")? Sale del listado y pasa a Cerrados; se puede volver a abrir cuando quieras.")) return;
+  r.cerrado = true;
+  r.cerradoEn = new Date().toISOString();
+  r.tcCierre = (r.moneda==="USD" && !(r.abonado && num(r.tcPago)>0)) ? String(ppTcHoy()||"") : "";
+  guardar(); ppRender(); toast("📁 Registro cerrado");
+}
+function ppAbrir(id){
+  const r = (S.presu||{})[id]; if(!r) return;
+  r.cerrado = false; r.cerradoEn = ""; r.tcCierre = "";
+  guardar(); ppRender();
+  toast("🔓 Registro abierto de nuevo" + (r.moneda==="USD" && !r.abonado ? " (toma el dólar de hoy)" : ""));
+}
+
+/* ---------- dólar BNA para los presupuestos ---------- */
+async function ppTraerTC(auto){
+  const bt = document.getElementById("ppBtTC");
+  if(!auto && bt){ bt.innerHTML = '<span class="spin">⏳</span> Consultando…'; bt.disabled = true; }
+  try{
+    let d;
+    try{ d = await (await fetch(PP_URL_BNA,{cache:"no-store"})).json(); }
+    catch(e){ d = JSON.parse(await fetchTexto(PP_URL_BNA)); }
+    const v = parseFloat(d && d.venta);
+    if(v>0){
+      S.presuTC = {venta:String(v), fecha:HOY()};
+      guardar(); ppPintarTC(); ppRender();
+      if(!auto) toast("✔ Dólar BNA vendedor: $"+fm2(v));
+    } else if(!auto) toast("Respuesta inválida de DolarApi.");
+  }catch(e){ if(!auto) toast("Sin conexión: el dólar queda como estaba."); }
+  if(bt){ bt.innerHTML = "⬇ Actualizar dólar BNA"; bt.disabled = false; }
+}
+
+/* ---------- exportar ---------- */
+function ppTxtFiltros(){
+  const f = ppFil, p = [];
+  if(f.q) p.push('búsqueda "'+f.q+'"');
+  if(f.proveedor) p.push("proveedor "+f.proveedor);
+  if(f.insumo) p.push("insumo "+f.insumo);
+  if(f.detalles.length) p.push("detalle "+f.detalles.join(" / "));
+  if(f.estado) p.push(f.estado==="pres"?"solo presupuestado":f.estado==="comp"?"comprado sin pagar":"abonado");
+  if(f.desde) p.push("desde "+ppFmF(f.desde));
+  if(f.hasta) p.push("hasta "+ppFmF(f.hasta));
+  return p.length ? "Filtro: "+p.join(" · ") : "Todos los registros";
+}
+function ppCSV(){
+  const regs = ppFiltrados();
+  if(!regs.length) return toast("No hay registros para exportar.");
+  const cab = ["Fecha","Proveedor","Insumo","Marca","Detalle","Cantidad","Unidad","Moneda","Precio unitario","IVA","Total ARS","Total USD","TC","Comprado","Abonado","Fecha de pago","Obs"];
+  const esc = t => '"' + String(t==null?"":t).replace(/"/g,'""') + '"';
+  const filas = regs.map(r=>{ const c=ppCalc(r); return [ppFmF(r.fecha),r.proveedor,r.insumo,r.marca,r.variedad,r.cantidad,r.unidad,r.moneda||"ARS",r.precio,(r.iva==="incl"||!r.iva)?"incluido":r.iva+"%",c.arsTotal==null?"":c.arsTotal.toFixed(2),c.usdTotal==null?"":c.usdTotal.toFixed(2),c.tc||"",r.comprado?"Si":"No",r.abonado?"Si":"No",ppFmF(r.fechaPago),r.obs].map(esc).join(";"); });
+  const csv = "\uFEFF" + [cab.map(esc).join(";")].concat(filas).join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+  a.download = "presupuestos_"+HOY().replace(/\//g,"-")+".csv";
+  a.click(); URL.revokeObjectURL(a.href);
+  toast("⬇ CSV descargado");
+}
+async function ppPDF(){
+  const regs = ppFiltrados();
+  if(!regs.length) return toast("No hay registros para el PDF.");
+  const bt = document.getElementById("ppBtPDF");
+  bt.innerHTML = '<span class="spin">⏳</span> Armando PDF…'; bt.disabled = true;
+  try{
+    await cargarJsPDF();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:"mm", format:"a4", orientation:"landscape"});
+    const W = 297, MI = 12, MD = 285;
+    const cmp = ppComparar(regs);
+
+    // encabezado
+    doc.setFillColor(13,44,84); doc.rect(0,0,W,24,"F");
+    doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(16);
+    doc.text("Presupuestos de insumos", MI, 11);
+    doc.setFont("helvetica","normal"); doc.setFontSize(9);
+    doc.text(sinEmoji(ppTxtFiltros()), MI, 18);
+    doc.setFontSize(9);
+    doc.text("Generado el "+HOY(), MD, 11, {align:"right"});
+    if(ppTcHoy()>0) doc.text("Dolar BNA vendedor $ "+fm2(ppTcHoy()), MD, 18, {align:"right"});
+
+    let y = 32;
+    let tot=0, pres=0, comp=0, abon=0;
+    regs.forEach(r=>{ const c=ppCalc(r); const v=c.arsTotal||0; tot+=v; if(r.abonado)abon+=v; else if(r.comprado)comp+=v; else pres+=v; });
+    doc.setTextColor(20,32,46); doc.setFont("helvetica","bold"); doc.setFontSize(10);
+    doc.text("Total listado: "+fm(tot)+"   |   Presupuestado: "+fm(pres)+"   |   Comprado sin pagar: "+fm(comp)+"   |   Abonado: "+fm(abon), MI, y);
+    y += 7;
+
+    const cols = [
+      {t:"Fecha", x:MI, w:18, a:"left"},
+      {t:"Proveedor", x:MI+18, w:38, a:"left"},
+      {t:"Insumo / detalle", x:MI+56, w:92, a:"left"},
+      {t:"Cant.", x:MI+148, w:20, a:"right"},
+      {t:"P. unit.", x:MI+168, w:32, a:"right"},
+      {t:"IVA", x:MI+200, w:16, a:"right"},
+      {t:"Total", x:MI+216, w:34, a:"right"},
+      {t:"Estado", x:MI+250, w:23, a:"left"}
+    ];
+    const cabecera = ()=>{
+      doc.setFillColor(21,101,192); doc.rect(MI, y-4.5, MD-MI, 7, "F");
+      doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
+      cols.forEach(c=> doc.text(c.t, c.a==="right"? c.x+c.w-1 : c.x+1, y, {align:c.a}));
+      y += 7;
+    };
+    cabecera();
+
+    doc.setFont("helvetica","normal"); doc.setFontSize(8);
+    regs.forEach(r=>{
+      const c = ppCalc(r), usd = r.moneda==="USD";
+      const det = [r.insumo, r.marca, r.variedad].filter(Boolean).join(" · ") + (r.obs? "  ("+r.obs+")" : "");
+      const lineas = doc.splitTextToSize(sinEmoji(det), cols[2].w-2);
+      const alto = Math.max(6, 3.6*lineas.length + 2.4);
+      if(y + alto > 200){ doc.addPage(); y = 16; cabecera(); doc.setFont("helvetica","normal"); doc.setFontSize(8); }
+      if(cmp[r.id]){
+        const hex = PP_CMP[cmp[r.id]];
+        doc.setFillColor(parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16));
+        doc.rect(MI, y-4.2, MD-MI, alto, "F");
+      }
+      doc.setTextColor(20,32,46);
+      doc.text(ppFmF(r.fecha), cols[0].x+1, y);
+      doc.text(doc.splitTextToSize(sinEmoji(r.proveedor||"-"), cols[1].w-2)[0]||"-", cols[1].x+1, y);
+      lineas.forEach((l,i)=> doc.text(l, cols[2].x+1, y + i*3.6));
+      doc.text((r.cantidad||"-")+" "+sinEmoji(r.unidad||""), cols[3].x+cols[3].w-1, y, {align:"right"});
+      doc.text((usd?"US$ ":"$ ")+fm2(num(r.precio)), cols[4].x+cols[4].w-1, y, {align:"right"});
+      doc.text((r.iva==="incl"||!r.iva)?"incl.":"+"+r.iva+"%", cols[5].x+cols[5].w-1, y, {align:"right"});
+      doc.setFont("helvetica","bold");
+      doc.text(fm(c.arsTotal||0), cols[6].x+cols[6].w-1, y, {align:"right"});
+      doc.setFont("helvetica","normal");
+      doc.text(r.abonado?"Abonado":r.comprado?"Comprado":"Presupuesto", cols[7].x+1, y);
+      y += alto;
+      doc.setDrawColor(216,226,238); doc.line(MI, y-3.6, MD, y-3.6);
+    });
+
+    if(Object.keys(cmp).length){
+      y += 4;
+      doc.setFontSize(8); doc.setTextColor(95,112,132);
+      doc.text("Verde: el mas barato  |  Amarillo: intermedio  |  Rojo: el mas caro (por precio unitario en pesos con IVA)", MI, y);
+    }
+
+    const nombre = "presupuestos_"+HOY().replace(/\//g,"-")+".pdf";
+    const blob = doc.output("blob");
+    const archivo = new File([blob], nombre, {type:"application/pdf"});
+    if(navigator.canShare && navigator.canShare({files:[archivo]})){
+      await navigator.share({files:[archivo], title:"Presupuestos de insumos", text:ppTxtFiltros()});
+    }else{
+      doc.save(nombre);
+      toast("PDF descargado (este equipo no tiene menú de compartir; adjuntalo a mano).");
+    }
+  }catch(e){
+    if(e && e.name!=="AbortError") toast("No se pudo armar el PDF: "+(e.message||e));
+  }
+  bt.innerHTML = "📄 PDF / compartir"; bt.disabled = false;
+}
+
 function volcarInputs(){
   ["nombreCampo","mixHasGan","mixHasAgr","agHas","agRinde","agComUsd","agComArs","agComPct"].forEach(id=>{
     document.getElementById(id).value = S[id]||"";
@@ -1278,6 +1787,7 @@ function volcarInputs(){
   document.getElementById("pPctGan").value = S.params.pctGan;
   pintarCats(); pintarSelCultivos(); pintarPrecioCultivo();
   pintarCultivosParam(); pintarKg(); pintarTC(); pintarArr();
+  ppCancelar(); ppRender();
   setTipo(S.tipo);
 }
 function iniciar(){
@@ -1289,7 +1799,7 @@ function iniciar(){
   if(syncUrl) iniciarFirebase(false);
   // al abrir, actualizar el TC mayorista automáticamente (si hay señal);
   // se espera unos segundos para que primero llegue lo de la nube
-  setTimeout(()=>{ traerTC(true); }, 2500);
+  setTimeout(()=>{ traerTC(true); ppTraerTC(true); }, 2500);
 }
 iniciar();
 </script>
