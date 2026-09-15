@@ -241,11 +241,11 @@
 <!-- ==================== PRESUPUESTOS ==================== -->
 <section id="vPresu" class="vista">
   <h2 class="sec">Presupuestos de insumos</h2>
-  <p class="sub">Precios que pasan los proveedores. Los importes en dólares se convierten con el dólar BNA de hoy hasta que el registro se marca como <b>abonado</b>: ahí queda congelado el tipo de cambio del día de pago.</p>
+  <p class="sub">Precios que pasan los proveedores. En cada registro en dólares elegís si se paga con <b>dólar BNA vendedor</b> o con <b>dólar mayorista vendedor</b>; se usa la cotización de hoy hasta que el registro se marca como <b>abonado</b>, y ahí queda congelado el tipo de cambio del día de pago.</p>
 
   <div class="tarjeta" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-    <div id="ppTC">Dólar BNA: —</div>
-    <button class="btn peq linea" id="ppBtTC" onclick="ppTraerTC(false)">⬇ Actualizar dólar BNA</button>
+    <div id="ppTC">Cotizaciones: —</div>
+    <button class="btn peq linea" id="ppBtTC" onclick="ppTraerTC(false)">⬇ Actualizar dólares</button>
   </div>
 
   <div class="tarjeta">
@@ -262,8 +262,11 @@
     <div class="fila3">
       <div class="campo-form"><label>Cantidad</label><input type="text" inputmode="decimal" id="pp_cant" placeholder="1"></div>
       <div class="campo-form"><label>Unidad</label><input type="text" id="pp_unidad" list="ppUnidades" placeholder="unidad"></div>
-      <div class="campo-form"><label>Moneda</label><select id="pp_moneda"><option value="ARS">Pesos ($)</option><option value="USD">Dólares (US$)</option></select></div>
+      <div class="campo-form"><label>Moneda</label><select id="pp_moneda" onchange="ppPintarTipoTC()"><option value="ARS">Pesos ($)</option><option value="USD">Dólares (US$)</option></select></div>
     </div>
+    <div class="campo-form" id="ppWrapTipoTC" style="display:none"><label>¿Con qué dólar se paga?</label>
+      <select id="pp_tctipo" onchange="ppPintarTipoTC()"><option value="BNA">Dólar BNA vendedor</option><option value="MAY">Dólar mayorista vendedor</option></select>
+      <div class="nota-fecha" id="ppNotaTipoTC"></div></div>
     <div class="fila2">
       <div class="campo-form"><label>Precio unitario</label><input type="text" inputmode="decimal" id="pp_precio" placeholder="0"></div>
       <div class="campo-form"><label>IVA</label><select id="pp_iva"><option value="incl">Incluido en el precio</option><option value="10.5">+ 10,5 %</option><option value="21">+ 21 %</option><option value="0">Sin IVA</option></select></div>
@@ -405,7 +408,8 @@ function estadoInicial(){
       tcCompra:"", tcVenta:"", tcFecha:""
     },
     presu:{},              // presupuestos de insumos: {id: {...}}
-    presuTC:{venta:"",fecha:""}   // dólar BNA vendedor usado en presupuestos
+    presuTC:{venta:"",fecha:""},    // dólar BNA vendedor usado en presupuestos
+    presuTCMay:{venta:"",fecha:""}  // dólar mayorista vendedor usado en presupuestos
   };
 }
 let S;
@@ -1117,7 +1121,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 10;   // subir este número en cada actualización del archivo
+const VERSION_APP = 11;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -1349,25 +1353,35 @@ function borrarTodo(){
    ============================================================ */
 const PP_CMP = {min:"#8fe08a", max:"#f5a09a", mid:"#ffe066"};
 const PP_URL_BNA = "https://dolarapi.com/v1/dolares/oficial";
+const PP_URL_MAY = "https://dolarapi.com/v1/dolares/mayorista";
 let ppFil = {q:"",proveedor:"",insumo:"",detalles:[],estado:"",desde:"",hasta:"",orden:"desc"};
 let ppEdit = "";
 let ppVerCer = false;
 
 function ppH(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
 function ppTodos(){ const o=S.presu||{}; return Object.keys(o).filter(k=>o[k]).map(k=>Object.assign({},o[k],{id:k})); }
-function ppTcHoy(){ return num(S.presuTC && S.presuTC.venta); }
+function ppTipoDe(r){ return (r && r.tcTipo==="MAY") ? "MAY" : "BNA"; }
+function ppNombreTipo(t){ return t==="MAY" ? "mayorista vendedor" : "BNA vendedor"; }
+function ppTcHoy(tipo){
+  const f = (tipo==="MAY") ? S.presuTCMay : S.presuTC;
+  return num(f && f.venta);
+}
+function ppTcFecha(tipo){
+  const f = (tipo==="MAY") ? S.presuTCMay : S.presuTC;
+  return (f && f.fecha) || "";
+}
 function ppTcDe(r){
   if(r.abonado && num(r.tcPago)>0) return num(r.tcPago);
   if(r.cerrado && num(r.tcCierre)>0) return num(r.tcCierre);
-  return ppTcHoy();
+  return ppTcHoy(ppTipoDe(r));
 }
 function ppCalc(r){
   const cant = num(r.cantidad)||0, p = num(r.precio)||0;
   const iva = (r.iva==="incl"||r.iva===undefined||r.iva==="") ? 0 : num(r.iva);
   const bruto = cant * p * (1 + iva/100);
-  const tc = ppTcDe(r);
-  if(r.moneda==="USD") return {tc, usdTotal:bruto, arsTotal: tc>0 ? bruto*tc : null};
-  return {tc, arsTotal:bruto, usdTotal: tc>0 ? bruto/tc : null};
+  const tc = ppTcDe(r), tipo = ppTipoDe(r);
+  if(r.moneda==="USD") return {tc, tipo, usdTotal:bruto, arsTotal: tc>0 ? bruto*tc : null};
+  return {tc, tipo, arsTotal:bruto, usdTotal: tc>0 ? bruto/tc : null};
 }
 function ppPU(r){ const c=ppCalc(r); if(c.arsTotal==null) return null; const cant=num(r.cantidad)||0; return cant>0 ? c.arsTotal/cant : c.arsTotal; }
 function ppFmARS(n){ return n==null ? "—" : "$ " + n.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -1435,10 +1449,15 @@ function ppRender(){
 }
 function ppPintarTC(){
   const el = document.getElementById("ppTC"); if(!el) return;
-  const v = ppTcHoy();
-  el.innerHTML = v>0
-    ? `Dólar BNA vendedor <b>$ ${fm2(v)}</b> <small style="color:var(--gris)">(${ppH((S.presuTC&&S.presuTC.fecha)||"")})</small>`
-    : `<span style="color:var(--rojo)">Sin dólar cargado: los importes en USD no se pueden convertir.</span>`;
+  const b = ppTcHoy("BNA"), m = ppTcHoy("MAY");
+  if(!(b>0) && !(m>0)){
+    el.innerHTML = `<span style="color:var(--rojo)">Sin dólar cargado: los importes en USD no se pueden convertir.</span>`;
+    return;
+  }
+  const uno = (nom,v,f)=> v>0
+    ? `<div>${nom} <b>$ ${fm2(v)}</b> <small style="color:var(--gris)">(${ppH(f)})</small></div>`
+    : `<div style="color:var(--rojo)">${nom}: sin cargar</div>`;
+  el.innerHTML = uno("Dólar BNA vendedor", b, ppTcFecha("BNA")) + uno("Dólar mayorista vendedor", m, ppTcFecha("MAY"));
 }
 function ppPintarDatalists(){
   const p = (id, lista) => { const el=document.getElementById(id); if(el) el.innerHTML = lista.map(v=>`<option value="${ppH(v)}">`).join(""); };
@@ -1504,7 +1523,7 @@ function ppPintarListado(regs){
       <td><b>${ppH(r.insumo||"—")}</b>${r.marca?`<br><small>${ppH(r.marca)}</small>`:""}${r.variedad?`<br><small style="color:var(--gris)">${ppH(r.variedad)}</small>`:""}${r.obs?`<br><small style="color:var(--gris)">📝 ${ppH(r.obs)}</small>`:""}</td>
       <td style="text-align:right;white-space:nowrap">${r.cantidad||"—"} ${ppH(r.unidad||"")}</td>
       <td style="text-align:right;white-space:nowrap">${usd?ppFmUSD(num(r.precio)):ppFmARS(num(r.precio))}<br><small style="color:var(--gris)">${ivaTxt}</small></td>
-      <td style="text-align:right;white-space:nowrap"><b>${ppFmARS(c.arsTotal)}</b><br><small style="color:var(--gris)">${ppFmUSD(c.usdTotal)}${usd&&c.tc?" · TC "+fm2(c.tc):""}</small></td>
+      <td style="text-align:right;white-space:nowrap"><b>${ppFmARS(c.arsTotal)}</b><br><small style="color:var(--gris)">${ppFmUSD(c.usdTotal)}${usd&&c.tc?" · "+(c.tipo==="MAY"?"May":"BNA")+" "+fm2(c.tc):""}</small></td>
       <td style="text-align:center;white-space:nowrap">
         <button class="pp-mini ${r.comprado?"on":""}" onclick="ppTogComprado('${r.id}')">${r.comprado?"✅ comprado":"marcar comprado"}</button><br>
         <button class="pp-mini ${r.abonado?"on":""}" onclick="ppTogAbonado('${r.id}')">${r.abonado?"💵 abonado "+ppFmF(r.fechaPago):"marcar pagado"}</button></td>
@@ -1532,11 +1551,24 @@ function ppPintarCerrados(){
         <td>${ppFmF(r.fecha)}</td><td>${ppH(r.proveedor||"—")}</td>
         <td><b>${ppH(r.insumo||"—")}</b>${r.variedad?`<br><small style="color:var(--gris)">${ppH(r.variedad)}</small>`:""}</td>
         <td style="text-align:right">${r.cantidad||"—"} ${ppH(r.unidad||"")}</td>
-        <td style="text-align:right;white-space:nowrap"><b>${ppFmARS(c.arsTotal)}</b>${r.moneda==="USD"?`<br><small style="color:var(--gris)">${ppFmUSD(c.usdTotal)}${c.tc?" · TC "+fm2(c.tc):""}</small>`:""}</td>
+        <td style="text-align:right;white-space:nowrap"><b>${ppFmARS(c.arsTotal)}</b>${r.moneda==="USD"?`<br><small style="color:var(--gris)">${ppFmUSD(c.usdTotal)}${c.tc?" · "+(c.tipo==="MAY"?"May":"BNA")+" "+fm2(c.tc):""}</small>`:""}</td>
         <td style="text-align:center;font-size:12px">${r.abonado?"💵 abonado":r.comprado?"✅ comprado":"presupuesto"}</td>
         <td style="white-space:nowrap;font-size:12px">${r.cerradoEn?ppFmF(r.cerradoEn.slice(0,10)):"—"}</td>
         <td style="white-space:nowrap"><button class="btn peq linea" onclick="ppAbrir('${r.id}')">🔓 Abrir</button> <button class="pp-ico" onclick="ppBorrar('${r.id}')">🗑️</button></td></tr>`; }).join("")}
       </tbody></table></div>` : ""}`;
+}
+
+function ppPintarTipoTC(){
+  const w = document.getElementById("ppWrapTipoTC"); if(!w) return;
+  const usd = (document.getElementById("pp_moneda")||{}).value === "USD";
+  w.style.display = usd ? "" : "none";
+  const t = (document.getElementById("pp_tctipo")||{}).value || "BNA";
+  const n = document.getElementById("ppNotaTipoTC");
+  if(n){
+    const v = ppTcHoy(t);
+    n.textContent = v>0 ? ("Hoy $ "+fm2(v)+" ("+ppTcFecha(t)+")") : "Sin cotización cargada: actualizá arriba.";
+    n.classList.toggle("vieja", !(v>0));
+  }
 }
 
 /* ---------- acciones ---------- */
@@ -1564,6 +1596,7 @@ function ppGuardar(){
     cantidad: ppVal("pp_cant"),
     unidad: ppVal("pp_unidad"),
     moneda: ppVal("pp_moneda") || "ARS",
+    tcTipo: (ppVal("pp_moneda")==="USD") ? (ppVal("pp_tctipo")||"BNA") : "",
     precio: ppVal("pp_precio"),
     iva: ppVal("pp_iva") || "incl",
     obs: ppVal("pp_obs")
@@ -1587,6 +1620,8 @@ function ppCancelar(){
   ["pp_prov","pp_insumo","pp_marca","pp_variedad","pp_cant","pp_unidad","pp_precio","pp_obs"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
   const f=document.getElementById("pp_fecha"); if(f) f.value = ppHoyISO();
   const m=document.getElementById("pp_moneda"); if(m) m.value="ARS";
+  const tt=document.getElementById("pp_tctipo"); if(tt) tt.value="BNA";
+  ppPintarTipoTC();
   const i=document.getElementById("pp_iva"); if(i) i.value="incl";
   document.getElementById("ppTitForm").textContent = "➕ Nuevo presupuesto";
   document.getElementById("ppBtGuardar").textContent = "💾 Guardar";
@@ -1600,6 +1635,7 @@ function ppEditar(id){
   set("pp_marca", r.marca); set("pp_variedad", r.variedad); set("pp_cant", r.cantidad);
   set("pp_unidad", r.unidad); set("pp_moneda", r.moneda||"ARS"); set("pp_precio", r.precio);
   set("pp_iva", r.iva||"incl"); set("pp_obs", r.obs);
+  set("pp_tctipo", ppTipoDe(r)); ppPintarTipoTC();
   document.getElementById("ppTitForm").textContent = "✏️ Editando presupuesto";
   document.getElementById("ppBtGuardar").textContent = "💾 Guardar cambios";
   document.getElementById("ppBtCancelar").style.display = "";
@@ -1623,7 +1659,7 @@ function ppTogAbonado(id){
   else{
     r.abonado = true; r.comprado = true;
     r.fechaPago = ppHoyISO();
-    r.tcPago = r.moneda==="USD" ? String(ppTcHoy()||"") : "";
+    r.tcPago = r.moneda==="USD" ? String(ppTcHoy(ppTipoDe(r))||"") : "";
   }
   guardar(); ppRender();
 }
@@ -1632,7 +1668,7 @@ function ppCerrar(id){
   if(!confirm("¿Cerrar este registro ("+(r.insumo||"")+" · "+(r.proveedor||"")+")? Sale del listado y pasa a Cerrados; se puede volver a abrir cuando quieras.")) return;
   r.cerrado = true;
   r.cerradoEn = new Date().toISOString();
-  r.tcCierre = (r.moneda==="USD" && !(r.abonado && num(r.tcPago)>0)) ? String(ppTcHoy()||"") : "";
+  r.tcCierre = (r.moneda==="USD" && !(r.abonado && num(r.tcPago)>0)) ? String(ppTcHoy(ppTipoDe(r))||"") : "";
   guardar(); ppRender(); toast("📁 Registro cerrado");
 }
 function ppAbrir(id){
@@ -1643,21 +1679,31 @@ function ppAbrir(id){
 }
 
 /* ---------- dólar BNA para los presupuestos ---------- */
+async function ppUnDolar(url){
+  let d;
+  try{ d = await (await fetch(url,{cache:"no-store"})).json(); }
+  catch(e){ d = JSON.parse(await fetchTexto(url)); }
+  const v = parseFloat(d && d.venta);
+  return v>0 ? v : null;
+}
 async function ppTraerTC(auto){
   const bt = document.getElementById("ppBtTC");
   if(!auto && bt){ bt.innerHTML = '<span class="spin">⏳</span> Consultando…'; bt.disabled = true; }
-  try{
-    let d;
-    try{ d = await (await fetch(PP_URL_BNA,{cache:"no-store"})).json(); }
-    catch(e){ d = JSON.parse(await fetchTexto(PP_URL_BNA)); }
-    const v = parseFloat(d && d.venta);
-    if(v>0){
-      S.presuTC = {venta:String(v), fecha:HOY()};
-      guardar(); ppPintarTC(); ppRender();
-      if(!auto) toast("✔ Dólar BNA vendedor: $"+fm2(v));
-    } else if(!auto) toast("Respuesta inválida de DolarApi.");
-  }catch(e){ if(!auto) toast("Sin conexión: el dólar queda como estaba."); }
-  if(bt){ bt.innerHTML = "⬇ Actualizar dólar BNA"; bt.disabled = false; }
+  const res = await Promise.all([
+    ppUnDolar(PP_URL_BNA).catch(()=>null),
+    ppUnDolar(PP_URL_MAY).catch(()=>null)
+  ]);
+  const [bna, may] = res;
+  if(bna>0) S.presuTC = {venta:String(bna), fecha:HOY()};
+  if(may>0) S.presuTCMay = {venta:String(may), fecha:HOY()};
+  if(bna>0 || may>0){
+    guardar(); ppPintarTC(); ppPintarTipoTC(); ppRender();
+    if(!auto){
+      const p=[]; if(bna>0) p.push("BNA $"+fm2(bna)); if(may>0) p.push("mayorista $"+fm2(may));
+      toast("✔ Dólares vendedor: "+p.join(" · "));
+    }
+  }else if(!auto) toast("Sin conexión: los dólares quedan como estaban.");
+  if(bt){ bt.innerHTML = "⬇ Actualizar dólares"; bt.disabled = false; }
 }
 
 /* ---------- exportar ---------- */
@@ -1675,9 +1721,9 @@ function ppTxtFiltros(){
 function ppCSV(){
   const regs = ppFiltrados();
   if(!regs.length) return toast("No hay registros para exportar.");
-  const cab = ["Fecha","Proveedor","Insumo","Marca","Detalle","Cantidad","Unidad","Moneda","Precio unitario","IVA","Total ARS","Total USD","TC","Comprado","Abonado","Fecha de pago","Obs"];
+  const cab = ["Fecha","Proveedor","Insumo","Marca","Detalle","Cantidad","Unidad","Moneda","Precio unitario","IVA","Total ARS","Total USD","TC","Dolar usado","Comprado","Abonado","Fecha de pago","Obs"];
   const esc = t => '"' + String(t==null?"":t).replace(/"/g,'""') + '"';
-  const filas = regs.map(r=>{ const c=ppCalc(r); return [ppFmF(r.fecha),r.proveedor,r.insumo,r.marca,r.variedad,r.cantidad,r.unidad,r.moneda||"ARS",r.precio,(r.iva==="incl"||!r.iva)?"incluido":r.iva+"%",c.arsTotal==null?"":c.arsTotal.toFixed(2),c.usdTotal==null?"":c.usdTotal.toFixed(2),c.tc||"",r.comprado?"Si":"No",r.abonado?"Si":"No",ppFmF(r.fechaPago),r.obs].map(esc).join(";"); });
+  const filas = regs.map(r=>{ const c=ppCalc(r); return [ppFmF(r.fecha),r.proveedor,r.insumo,r.marca,r.variedad,r.cantidad,r.unidad,r.moneda||"ARS",r.precio,(r.iva==="incl"||!r.iva)?"incluido":r.iva+"%",c.arsTotal==null?"":c.arsTotal.toFixed(2),c.usdTotal==null?"":c.usdTotal.toFixed(2),c.tc||"",(r.moneda==="USD"?ppNombreTipo(c.tipo):""),r.comprado?"Si":"No",r.abonado?"Si":"No",ppFmF(r.fechaPago),r.obs].map(esc).join(";"); });
   const csv = "\uFEFF" + [cab.map(esc).join(";")].concat(filas).join("\r\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
@@ -1705,7 +1751,10 @@ async function ppPDF(){
     doc.text(sinEmoji(ppTxtFiltros()), MI, 18);
     doc.setFontSize(9);
     doc.text("Generado el "+HOY(), MD, 11, {align:"right"});
-    if(ppTcHoy()>0) doc.text("Dolar BNA vendedor $ "+fm2(ppTcHoy()), MD, 18, {align:"right"});
+    const _b=ppTcHoy("BNA"), _m=ppTcHoy("MAY"), _c=[];
+    if(_b>0) _c.push("BNA vend. $ "+fm2(_b));
+    if(_m>0) _c.push("Mayorista vend. $ "+fm2(_m));
+    if(_c.length) doc.text(_c.join("   |   "), MD, 18, {align:"right"});
 
     let y = 32;
     let tot=0, pres=0, comp=0, abon=0;
@@ -1749,7 +1798,7 @@ async function ppPDF(){
       doc.text(doc.splitTextToSize(sinEmoji(r.proveedor||"-"), cols[1].w-2)[0]||"-", cols[1].x+1, y);
       lineas.forEach((l,i)=> doc.text(l, cols[2].x+1, y + i*3.6));
       doc.text((r.cantidad||"-")+" "+sinEmoji(r.unidad||""), cols[3].x+cols[3].w-1, y, {align:"right"});
-      doc.text((usd?"US$ ":"$ ")+fm2(num(r.precio)), cols[4].x+cols[4].w-1, y, {align:"right"});
+      doc.text((usd?"US$ ":"$ ")+fm2(num(r.precio)) + (usd? " ("+(c.tipo==="MAY"?"May":"BNA")+")" : ""), cols[4].x+cols[4].w-1, y, {align:"right"});
       doc.text((r.iva==="incl"||!r.iva)?"incl.":"+"+r.iva+"%", cols[5].x+cols[5].w-1, y, {align:"right"});
       doc.setFont("helvetica","bold");
       doc.text(fm(c.arsTotal||0), cols[6].x+cols[6].w-1, y, {align:"right"});
