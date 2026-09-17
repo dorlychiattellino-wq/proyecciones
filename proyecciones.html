@@ -1121,7 +1121,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 13;   // subir este número en cada actualización del archivo
+const VERSION_APP = 14;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -1389,6 +1389,28 @@ function ppFmUSD(n){ return n==null ? "—" : "US$ " + n.toLocaleString("es-AR",
 function ppFmF(f){ if(!f) return "—"; const p=String(f).split("-"); return p.length===3 ? p[2]+"/"+p[1]+"/"+p[0] : f; }
 function ppHoyISO(){ const d=new Date(); return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2); }
 
+/* ¿el registro pasa los filtros? "salvo" permite ignorar algunos campos,
+   para armar los desplegables en cascada (cada lista mira los OTROS filtros) */
+function ppCumple(r, salvo){
+  const f = ppFil, om = salvo || {};
+  if(!om.proveedor && f.proveedor && norm(r.proveedor||"")!==norm(f.proveedor)) return false;
+  if(!om.insumos && f.insumos.length && !f.insumos.some(i=>norm(i)===norm(r.insumo||""))) return false;
+  if(!om.detalles && f.detalles.length && !f.detalles.some(d=>norm(d)===norm(r.variedad||""))) return false;
+  if(!om.estado){
+    if(f.estado==="pres" && (r.comprado||r.abonado)) return false;
+    if(f.estado==="comp" && !(r.comprado && !r.abonado)) return false;
+    if(f.estado==="abon" && !r.abonado) return false;
+  }
+  if(!om.fechas){
+    if(f.desde && (r.fecha||"") < f.desde) return false;
+    if(f.hasta && (r.fecha||"") > f.hasta) return false;
+  }
+  if(!om.q && f.q){
+    const t = norm([r.proveedor,r.insumo,r.marca,r.variedad,r.obs].join(" "));
+    if(!norm(f.q).split(" ").filter(Boolean).every(p=>t.includes(p))) return false;
+  }
+  return true;
+}
 /* listas para los desplegables, armadas con lo que ya se cargó */
 function ppListaDe(campo, filtro){
   const set = new Map();
@@ -1401,6 +1423,23 @@ function ppListaDe(campo, filtro){
   });
   return [...set.values()].sort((a,b)=>a.localeCompare(b,"es"));
 }
+/* lista en cascada: valores disponibles según los demás filtros activos */
+function ppListaCascada(campo, salvo){
+  const set = new Map();
+  ppTodos().filter(r=>!r.cerrado).forEach(r=>{
+    if(!ppCumple(r, salvo)) return;
+    const v = (r[campo]||"").trim();
+    if(v && !set.has(norm(v))) set.set(norm(v), v);
+  });
+  return [...set.values()].sort((a,b)=>a.localeCompare(b,"es"));
+}
+/* al cambiar un filtro, quitar las selecciones que ya no existan en la cascada */
+function ppPodarSelecciones(){
+  const insDisp = ppListaCascada("insumo", {insumos:true, detalles:true});
+  ppFil.insumos = ppFil.insumos.filter(i=>insDisp.some(x=>norm(x)===norm(i)));
+  const detDisp = ppListaCascada("variedad", {detalles:true});
+  ppFil.detalles = ppFil.detalles.filter(d=>detDisp.some(x=>norm(x)===norm(d)));
+}
 function ppOpts(lista, sel, vacio){
   return `<option value="">${ppH(vacio||"Todos")}</option>` +
     lista.map(v=>`<option value="${ppH(v)}"${norm(v)===norm(sel||"")?" selected":""}>${ppH(v)}</option>`).join("");
@@ -1409,21 +1448,7 @@ function ppOpts(lista, sel, vacio){
 /* ---------- filtrado ---------- */
 function ppFiltrados(){
   const f = ppFil;
-  let regs = ppTodos().filter(r=>!r.cerrado).filter(r=>{
-    if(f.proveedor && norm(r.proveedor||"")!==norm(f.proveedor)) return false;
-    if(f.insumos.length && !f.insumos.some(i=>norm(i)===norm(r.insumo||""))) return false;
-    if(f.detalles.length && !f.detalles.some(d=>norm(d)===norm(r.variedad||""))) return false;
-    if(f.estado==="pres" && (r.comprado||r.abonado)) return false;
-    if(f.estado==="comp" && !(r.comprado && !r.abonado)) return false;
-    if(f.estado==="abon" && !r.abonado) return false;
-    if(f.desde && (r.fecha||"") < f.desde) return false;
-    if(f.hasta && (r.fecha||"") > f.hasta) return false;
-    if(f.q){
-      const t = norm([r.proveedor,r.insumo,r.marca,r.variedad,r.obs].join(" "));
-      if(!norm(f.q).split(" ").filter(Boolean).every(p=>t.includes(p))) return false;
-    }
-    return true;
-  });
+  let regs = ppTodos().filter(r=>!r.cerrado).filter(r=>ppCumple(r));
   regs.sort((a,b)=> f.orden==="asc" ? (a.fecha||"").localeCompare(b.fecha||"") : (b.fecha||"").localeCompare(a.fecha||""));
   return regs;
 }
@@ -1476,22 +1501,25 @@ function ppPintarDatalists(){
 }
 function ppPintarFiltros(){
   const f = ppFil, cont = document.getElementById("ppFiltros"); if(!cont) return;
-  const dets = f.insumos.length ? ppListaDe("variedad",{insumos:f.insumos}) : [];
-  const libres = dets.filter(d=>!f.detalles.some(x=>norm(x)===norm(d)));
-  const insLibres = ppListaDe("insumo").filter(i=>!f.insumos.some(x=>norm(x)===norm(i)));
+  // cada lista sale de los registros que pasan los OTROS filtros (cascada)
+  const provs   = ppListaCascada("proveedor", {proveedor:true});
+  const insumos = ppListaCascada("insumo",    {insumos:true, detalles:true});
+  const dets    = ppListaCascada("variedad",  {detalles:true});
+  const libres    = dets.filter(d=>!f.detalles.some(x=>norm(x)===norm(d)));
+  const insLibres = insumos.filter(i=>!f.insumos.some(x=>norm(x)===norm(i)));
   const chips = (lista, fn) => lista.map(v=>`<span class="pp-chip">${ppH(v)}<button onclick="${fn}('${ppH(v).replace(/'/g,"&#39;")}')">✕</button></span>`).join("");
   cont.innerHTML = `
     <div class="campo-form"><label>Buscar</label>
       <input type="text" id="ppF_q" value="${ppH(f.q)}" placeholder="proveedor, insumo, marca, detalle, obs…" oninput="ppSetFil('q',this.value,true)"></div>
     <div class="fila2">
-      <div class="campo-form"><label>Proveedor</label><select onchange="ppSetFil('proveedor',this.value)">${ppOpts(ppListaDe("proveedor"), f.proveedor)}</select></div>
+      <div class="campo-form"><label>Proveedor</label><select onchange="ppSetFil('proveedor',this.value)">${ppOpts(provs, f.proveedor, "Todos los proveedores")}</select></div>
       <div class="campo-form"><label>Insumo</label>
         <select onchange="if(this.value)ppTogIns(this.value); this.value='';">${ppOpts(insLibres,"", f.insumos.length? "— Agregar otro insumo —" : "Todos los insumos")}</select>
         ${f.insumos.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
           ${chips(f.insumos,"ppTogIns")}
           <button class="btn peq gris" onclick="ppSetFil('insumos',[])">quitar todos</button></div>` : ""}</div>
     </div>
-    ${f.insumos.length && dets.length ? `<div class="campo-form"><label>Detalle de ${ppH(f.insumos.join(" / "))}</label>
+    ${dets.length ? `<div class="campo-form"><label>Detalle${f.insumos.length? " de "+ppH(f.insumos.join(" / ")) : (f.proveedor? " de "+ppH(f.proveedor) : "")}</label>
       <select onchange="if(this.value)ppTogDet(this.value); this.value='';">${ppOpts(libres,"","— Agregar detalle para comparar —")}</select>
       ${f.detalles.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
         ${chips(f.detalles,"ppTogDet")}
@@ -1594,17 +1622,14 @@ function ppPintarTipoTC(){
 function ppSetFil(k,v,sinPintar){
   if(k==="insumos" && (!v || !v.length)) ppFil.detalles = [];
   ppFil[k] = v;
+  if(!sinPintar) ppPodarSelecciones();
   if(sinPintar){ const regs=ppFiltrados(); ppPintarTotales(regs); ppPintarListado(regs); }
   else ppRender();
 }
 function ppTogIns(v){
   const i = ppFil.insumos.findIndex(x=>norm(x)===norm(v));
   if(i>=0) ppFil.insumos.splice(i,1); else ppFil.insumos.push(v);
-  // dejar solo los detalles que siguen perteneciendo a los insumos elegidos
-  if(ppFil.detalles.length){
-    const validos = ppFil.insumos.length ? ppListaDe("variedad",{insumos:ppFil.insumos}) : [];
-    ppFil.detalles = ppFil.detalles.filter(d=>validos.some(v2=>norm(v2)===norm(d)));
-  }
+  ppPodarSelecciones();   // deja solo los detalles que siguen correspondiendo
   ppRender();
 }
 function ppTogDet(d){
