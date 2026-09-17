@@ -1121,7 +1121,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 12;   // subir este número en cada actualización del archivo
+const VERSION_APP = 13;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -1354,7 +1354,7 @@ function borrarTodo(){
 const PP_CMP = {min:"#8fe08a", max:"#f5a09a", mid:"#ffe066"};
 const PP_URL_BNA = "https://dolarapi.com/v1/dolares/oficial";
 const PP_URL_MAY = "https://dolarapi.com/v1/dolares/mayorista";
-let ppFil = {q:"",proveedor:"",insumo:"",detalles:[],estado:"",desde:"",hasta:"",orden:"desc"};
+let ppFil = {q:"",proveedor:"",insumos:[],detalles:[],estado:"",desde:"",hasta:"",orden:"desc"};
 let ppEdit = "";
 let ppVerCer = false;
 
@@ -1394,6 +1394,8 @@ function ppListaDe(campo, filtro){
   const set = new Map();
   ppTodos().forEach(r=>{
     if(filtro && filtro.insumo && norm(r.insumo||"")!==norm(filtro.insumo)) return;
+    if(filtro && filtro.insumos && filtro.insumos.length &&
+       !filtro.insumos.some(i=>norm(i)===norm(r.insumo||""))) return;
     const v = (r[campo]||"").trim();
     if(v && !set.has(norm(v))) set.set(norm(v), v);
   });
@@ -1409,7 +1411,7 @@ function ppFiltrados(){
   const f = ppFil;
   let regs = ppTodos().filter(r=>!r.cerrado).filter(r=>{
     if(f.proveedor && norm(r.proveedor||"")!==norm(f.proveedor)) return false;
-    if(f.insumo && norm(r.insumo||"")!==norm(f.insumo)) return false;
+    if(f.insumos.length && !f.insumos.some(i=>norm(i)===norm(r.insumo||""))) return false;
     if(f.detalles.length && !f.detalles.some(d=>norm(d)===norm(r.variedad||""))) return false;
     if(f.estado==="pres" && (r.comprado||r.abonado)) return false;
     if(f.estado==="comp" && !(r.comprado && !r.abonado)) return false;
@@ -1427,7 +1429,7 @@ function ppFiltrados(){
 }
 function ppHayFiltro(){
   const f = ppFil;
-  return !!(f.q || f.proveedor || f.insumo || f.detalles.length || f.estado || f.desde || f.hasta);
+  return !!(f.q || f.proveedor || f.insumos.length || f.detalles.length || f.estado || f.desde || f.hasta);
 }
 function ppComparar(regs){
   const out = {};
@@ -1474,19 +1476,25 @@ function ppPintarDatalists(){
 }
 function ppPintarFiltros(){
   const f = ppFil, cont = document.getElementById("ppFiltros"); if(!cont) return;
-  const dets = f.insumo ? ppListaDe("variedad",{insumo:f.insumo}) : [];
+  const dets = f.insumos.length ? ppListaDe("variedad",{insumos:f.insumos}) : [];
   const libres = dets.filter(d=>!f.detalles.some(x=>norm(x)===norm(d)));
+  const insLibres = ppListaDe("insumo").filter(i=>!f.insumos.some(x=>norm(x)===norm(i)));
+  const chips = (lista, fn) => lista.map(v=>`<span class="pp-chip">${ppH(v)}<button onclick="${fn}('${ppH(v).replace(/'/g,"&#39;")}')">✕</button></span>`).join("");
   cont.innerHTML = `
     <div class="campo-form"><label>Buscar</label>
       <input type="text" id="ppF_q" value="${ppH(f.q)}" placeholder="proveedor, insumo, marca, detalle, obs…" oninput="ppSetFil('q',this.value,true)"></div>
     <div class="fila2">
       <div class="campo-form"><label>Proveedor</label><select onchange="ppSetFil('proveedor',this.value)">${ppOpts(ppListaDe("proveedor"), f.proveedor)}</select></div>
-      <div class="campo-form"><label>Insumo</label><select onchange="ppSetFil('insumo',this.value)">${ppOpts(ppListaDe("insumo"), f.insumo)}</select></div>
+      <div class="campo-form"><label>Insumo</label>
+        <select onchange="if(this.value)ppTogIns(this.value); this.value='';">${ppOpts(insLibres,"", f.insumos.length? "— Agregar otro insumo —" : "Todos los insumos")}</select>
+        ${f.insumos.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+          ${chips(f.insumos,"ppTogIns")}
+          <button class="btn peq gris" onclick="ppSetFil('insumos',[])">quitar todos</button></div>` : ""}</div>
     </div>
-    ${f.insumo && dets.length ? `<div class="campo-form"><label>Detalle de ${ppH(f.insumo)}</label>
+    ${f.insumos.length && dets.length ? `<div class="campo-form"><label>Detalle de ${ppH(f.insumos.join(" / "))}</label>
       <select onchange="if(this.value)ppTogDet(this.value); this.value='';">${ppOpts(libres,"","— Agregar detalle para comparar —")}</select>
       ${f.detalles.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
-        ${f.detalles.map(d=>`<span class="pp-chip">${ppH(d)}<button onclick="ppTogDet('${ppH(d).replace(/'/g,"&#39;")}')">✕</button></span>`).join("")}
+        ${chips(f.detalles,"ppTogDet")}
         <button class="btn peq gris" onclick="ppSetFil('detalles',[])">quitar todos</button></div>
         <div class="aviso">Se muestran solo esos detalles, ordenados por precio.</div>` : ""}</div>` : ""}
     <div class="fila3">
@@ -1584,17 +1592,27 @@ function ppPintarTipoTC(){
 
 /* ---------- acciones ---------- */
 function ppSetFil(k,v,sinPintar){
-  if(k==="insumo") ppFil.detalles = [];
+  if(k==="insumos" && (!v || !v.length)) ppFil.detalles = [];
   ppFil[k] = v;
   if(sinPintar){ const regs=ppFiltrados(); ppPintarTotales(regs); ppPintarListado(regs); }
   else ppRender();
+}
+function ppTogIns(v){
+  const i = ppFil.insumos.findIndex(x=>norm(x)===norm(v));
+  if(i>=0) ppFil.insumos.splice(i,1); else ppFil.insumos.push(v);
+  // dejar solo los detalles que siguen perteneciendo a los insumos elegidos
+  if(ppFil.detalles.length){
+    const validos = ppFil.insumos.length ? ppListaDe("variedad",{insumos:ppFil.insumos}) : [];
+    ppFil.detalles = ppFil.detalles.filter(d=>validos.some(v2=>norm(v2)===norm(d)));
+  }
+  ppRender();
 }
 function ppTogDet(d){
   const i = ppFil.detalles.findIndex(x=>norm(x)===norm(d));
   if(i>=0) ppFil.detalles.splice(i,1); else ppFil.detalles.push(d);
   ppRender();
 }
-function ppLimpiarFiltros(){ ppFil = {q:"",proveedor:"",insumo:"",detalles:[],estado:"",desde:"",hasta:"",orden:"desc"}; ppRender(); }
+function ppLimpiarFiltros(){ ppFil = {q:"",proveedor:"",insumos:[],detalles:[],estado:"",desde:"",hasta:"",orden:"desc"}; ppRender(); }
 
 function ppVal(id){ const el=document.getElementById(id); return el? el.value.trim() : ""; }
 function ppGuardar(){
@@ -1722,7 +1740,7 @@ function ppTxtFiltros(){
   const f = ppFil, p = [];
   if(f.q) p.push('búsqueda "'+f.q+'"');
   if(f.proveedor) p.push("proveedor "+f.proveedor);
-  if(f.insumo) p.push("insumo "+f.insumo);
+  if(f.insumos.length) p.push((f.insumos.length>1?"insumos ":"insumo ")+f.insumos.join(" / "));
   if(f.detalles.length) p.push("detalle "+f.detalles.join(" / "));
   if(f.estado) p.push(f.estado==="pres"?"solo presupuestado":f.estado==="comp"?"comprado sin pagar":"abonado");
   if(f.desde) p.push("desde "+ppFmF(f.desde));
