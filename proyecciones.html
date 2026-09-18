@@ -1126,7 +1126,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 17;   // subir este número en cada actualización del archivo
+const VERSION_APP = 18;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -1556,20 +1556,35 @@ function ppPintarFiltros(){
       <div class="campo-form"><label>Hasta</label><input type="date" value="${ppH(f.hasta)}" onchange="ppSetFil('hasta',this.value)"></div>
     </div>`;
 }
+/* suma en pesos y, aparte, en dólares (solo los registros cargados en USD) */
+function ppSumas(regs){
+  const s = {tot:0,pres:0,comp:0,abon:0, totU:0,presU:0,compU:0,abonU:0, hayUsd:false};
+  regs.forEach(r=>{
+    const c = ppCalc(r), v = c.arsTotal||0;
+    s.tot += v;
+    if(r.abonado) s.abon += v; else if(r.comprado) s.comp += v; else s.pres += v;
+    if(r.moneda==="USD"){
+      const u = c.usdTotal||0; s.hayUsd = true; s.totU += u;
+      if(r.abonado) s.abonU += u; else if(r.comprado) s.compU += u; else s.presU += u;
+    }
+  });
+  return s;
+}
 function ppPintarTotales(regs){
   const cont = document.getElementById("ppTotales"); if(!cont) return;
-  let tot=0, pres=0, comp=0, abon=0;
-  regs.forEach(r=>{ const c=ppCalc(r); const v=c.arsTotal||0; tot+=v; if(r.abonado)abon+=v; else if(r.comprado)comp+=v; else pres+=v; });
-  const caja = (tit,val,color)=>`<div style="flex:1;min-width:140px;background:#f4f8fd;border:1px solid var(--gris-cl);border-radius:10px;padding:10px">
+  const s = ppSumas(regs);
+  const caja = (tit,val,usd,color)=>`<div style="flex:1;min-width:140px;background:#f4f8fd;border:1px solid var(--gris-cl);border-radius:10px;padding:10px">
     <div style="font-size:10px;font-weight:800;letter-spacing:.4px;color:var(--gris);text-transform:uppercase">${tit}</div>
-    <div style="font-size:16px;font-weight:800;color:${color||"var(--tinta)"}">${ppFmARS(val)}</div></div>`;
+    <div style="font-size:16px;font-weight:800;color:${color||"var(--tinta)"}">${ppFmARS(val)}</div>
+    ${s.hayUsd? `<div style="font-size:11px;color:var(--gris);margin-top:1px">${ppFmUSD(usd)}</div>`:""}</div>`;
   cont.innerHTML = `<h3 class="tit">📊 Totales de lo filtrado (${regs.length})</h3>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      ${caja("Total listado", tot)}
-      ${caja("Presupuestado (sin comprar)", pres, "var(--verde)")}
-      ${caja("Comprado, pendiente de pago", comp, "var(--trigo)")}
-      ${caja("Abonado", abon, "var(--verde-ok)")}
-    </div>`;
+      ${caja("Total listado", s.tot, s.totU)}
+      ${caja("Presupuestado (sin comprar)", s.pres, s.presU, "var(--verde)")}
+      ${caja("Comprado, pendiente de pago", s.comp, s.compU, "var(--trigo)")}
+      ${caja("Abonado", s.abon, s.abonU, "var(--verde-ok)")}
+    </div>
+    ${s.hayUsd? `<div class="aviso" style="margin:10px 0 0">En dólares se suman solo los registros cargados en esa moneda.</div>`:""}`;
 }
 function ppPintarListado(regs){
   const cont = document.getElementById("ppListado"); if(!cont) return;
@@ -1916,10 +1931,14 @@ async function ppPDF(){
       + "   ·   Los importes en dolares no abonados se convierten a la cotizacion de hoy; los abonados, al TC del dia de pago.";
     doc.splitTextToSize(_pie, MD-MI).forEach(l=>{ doc.text(l, MI, y); y+=3.8; });
     y += 3;
-    let tot=0, pres=0, comp=0, abon=0;
-    regs.forEach(r=>{ const c=ppCalc(r); const v=c.arsTotal||0; tot+=v; if(r.abonado)abon+=v; else if(r.comprado)comp+=v; else pres+=v; });
+    const S_ = ppSumas(regs);
     doc.setTextColor(20,32,46); doc.setFont("helvetica","bold"); doc.setFontSize(10);
-    doc.text("Total listado: "+fm(tot)+"   |   Presupuestado: "+fm(pres)+"   |   Comprado sin pagar: "+fm(comp)+"   |   Abonado: "+fm(abon), MI, y);
+    doc.text("Total listado: "+fm(S_.tot)+"   |   Presupuestado: "+fm(S_.pres)+"   |   Comprado sin pagar: "+fm(S_.comp)+"   |   Abonado: "+fm(S_.abon), MI, y);
+    if(S_.hayUsd){
+      y += 4;
+      doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(95,112,132);
+      doc.text("En dolares (solo lo cargado en USD)   ·   Total: US$ "+fm2(S_.totU)+"   |   Presupuestado: US$ "+fm2(S_.presU)+"   |   Comprado sin pagar: US$ "+fm2(S_.compU)+"   |   Abonado: US$ "+fm2(S_.abonU), MI, y);
+    }
     y += 7;
 
     const cols = [
@@ -1945,7 +1964,7 @@ async function ppPDF(){
       const c = ppCalc(r), usd = r.moneda==="USD";
       const det = [r.insumo, r.marca, r.variedad].filter(Boolean).join(" · ") + (r.obs? "  ("+r.obs+")" : "");
       const lineas = doc.splitTextToSize(sinEmoji(det), cols[2].w-2);
-      const alto = Math.max(6, 3.6*lineas.length + 2.4);
+      const alto = Math.max(usd? 9 : 6, 3.6*lineas.length + 2.4);
       if(y + alto > 200){ doc.addPage(); y = 16; cabecera(); doc.setFont("helvetica","normal"); doc.setFontSize(8); }
       if(cmp[r.id]){
         const hex = PP_CMP[cmp[r.id]];
@@ -1962,6 +1981,11 @@ async function ppPDF(){
       doc.setFont("helvetica","bold");
       doc.text(fm(c.arsTotal||0), cols[6].x+cols[6].w-1, y, {align:"right"});
       doc.setFont("helvetica","normal");
+      if(usd){
+        doc.setFontSize(6.8); doc.setTextColor(95,112,132);
+        doc.text("US$ "+fm2(c.usdTotal||0), cols[6].x+cols[6].w-1, y+3.2, {align:"right"});
+        doc.setFontSize(8); doc.setTextColor(20,32,46);
+      }
       doc.text(r.abonado?"Abonado":r.comprado?"Comprado":"Presupuesto", cols[7].x+1, y);
       y += alto;
       doc.setDrawColor(216,226,238); doc.line(MI, y-3.6, MD, y-3.6);
