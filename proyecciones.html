@@ -292,6 +292,28 @@
   <div class="tarjeta" id="ppTotales"></div>
   <div class="tarjeta" id="ppListado"></div>
   <div class="tarjeta" id="ppCerrados" style="display:none"></div>
+
+  <!-- ===== NOTAS / RECORDATORIOS ===== -->
+  <div class="tarjeta" id="ntCard">
+    <h3 class="tit">📝 Notas y recordatorios</h3>
+    <p class="sub" style="margin:0 0 10px">Con semáforo: 🔴 urgente · 🟡 pendiente · 🟢 hecho / sin apuro. Tocá el semáforo de una nota para cambiarlo.</p>
+    <div class="fila2">
+      <div class="campo-form"><label>Nota</label>
+        <input type="text" id="nt_texto" placeholder="Ej: Llamar a Tomás Hnos. por el saldo del maíz"
+               onkeydown="if(event.key==='Enter')ntGuardar()"></div>
+      <div class="fila2" style="gap:10px">
+        <div class="campo-form"><label>Semáforo</label>
+          <select id="nt_sem"><option value="rojo">🔴 Urgente</option><option value="amar" selected>🟡 Pendiente</option><option value="verde">🟢 Hecho / sin apuro</option></select></div>
+        <div class="campo-form"><label>Para el día (opcional)</label>
+          <input type="date" id="nt_fecha"></div>
+      </div>
+    </div>
+    <div class="fila-botones">
+      <button class="btn peq" id="ntBtGuardar" onclick="ntGuardar()">＋ Agregar nota</button>
+      <button class="btn peq gris" id="ntBtCancel" style="display:none" onclick="ntCancelar()">Cancelar</button>
+    </div>
+    <div id="ntLista" style="margin-top:12px"></div>
+  </div>
 </section>
 
 <!-- ==================== PARÁMETROS ==================== -->
@@ -424,6 +446,7 @@ function estadoInicial(){
       tcCompra:"", tcVenta:"", tcFecha:""
     },
     presu:{},              // presupuestos de insumos: {id: {...}}
+    notas:{},              // notas / recordatorios con semáforo: {id: {...}}
     presuTC:{venta:"",fecha:""},    // dólar BNA vendedor usado en presupuestos
     presuTCMay:{venta:"",fecha:""}  // dólar mayorista vendedor usado en presupuestos
   };
@@ -1126,7 +1149,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 18;   // subir este número en cada actualización del archivo
+const VERSION_APP = 19;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -1494,6 +1517,7 @@ function ppRender(){
   ppPintarTotales(regs);
   ppPintarListado(regs);
   ppPintarCerrados();
+  ntPintar();
 }
 function ppPintarTC(){
   const el = document.getElementById("ppTC"); if(!el) return;
@@ -1639,6 +1663,95 @@ function ppPintarCerrados(){
         <td style="white-space:nowrap;font-size:12px">${r.cerradoEn?ppFmF(r.cerradoEn.slice(0,10)):"—"}</td>
         <td style="white-space:nowrap"><button class="btn peq linea" onclick="ppAbrir('${r.id}')">🔓 Abrir</button> <button class="pp-ico" onclick="ppBorrar('${r.id}')">🗑️</button></td></tr>`; }).join("")}
       </tbody></table></div>` : ""}`;
+}
+
+/* ============================================================
+   NOTAS / RECORDATORIOS CON SEMÁFORO
+   ============================================================ */
+const NT_SEM = {
+  rojo:{ico:"🔴", nom:"Urgente",             bg:"#fdecec", bd:"#f0a9a9", ord:0},
+  amar:{ico:"🟡", nom:"Pendiente",           bg:"#fff8e1", bd:"#e8cf7a", ord:1},
+  verde:{ico:"🟢", nom:"Hecho / sin apuro",  bg:"#ecf8ee", bd:"#a8d9b0", ord:2}
+};
+let ntEditando = null;
+
+function ntLista(){
+  return Object.values(S.notas||{}).sort((a,b)=>{
+    const oa=(NT_SEM[a.sem]||NT_SEM.amar).ord, ob=(NT_SEM[b.sem]||NT_SEM.amar).ord;
+    if(oa!==ob) return oa-ob;
+    const fa=a.fecha||"9999-99-99", fb=b.fecha||"9999-99-99";
+    if(fa!==fb) return fa.localeCompare(fb);
+    return (b.creada||"").localeCompare(a.creada||"");
+  });
+}
+function ntGuardar(){
+  const txt = (document.getElementById("nt_texto").value||"").trim();
+  if(!txt){ toast("Escribí la nota primero"); return; }
+  const sem = document.getElementById("nt_sem").value || "amar";
+  const fecha = document.getElementById("nt_fecha").value || "";
+  if(ntEditando && S.notas[ntEditando]){
+    const n = S.notas[ntEditando];
+    n.texto = txt; n.sem = sem; n.fecha = fecha;
+  }else{
+    const id = "n" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+    S.notas[id] = {id, texto:txt, sem, fecha, creada:new Date().toISOString()};
+  }
+  guardar(); ntCancelar(); ntPintar();
+  toast(ntEditando? "✔ Nota actualizada" : "✔ Nota agregada");
+}
+function ntEditar(id){
+  const n = S.notas[id]; if(!n) return;
+  ntEditando = id;
+  document.getElementById("nt_texto").value = n.texto||"";
+  document.getElementById("nt_sem").value = n.sem||"amar";
+  document.getElementById("nt_fecha").value = n.fecha||"";
+  document.getElementById("ntBtGuardar").textContent = "💾 Guardar cambios";
+  document.getElementById("ntBtCancel").style.display = "";
+  document.getElementById("ntCard").scrollIntoView({behavior:"smooth", block:"start"});
+}
+function ntCancelar(){
+  ntEditando = null;
+  const t=document.getElementById("nt_texto"); if(t) t.value="";
+  const s=document.getElementById("nt_sem"); if(s) s.value="amar";
+  const f=document.getElementById("nt_fecha"); if(f) f.value="";
+  const b=document.getElementById("ntBtGuardar"); if(b) b.textContent="＋ Agregar nota";
+  const c=document.getElementById("ntBtCancel"); if(c) c.style.display="none";
+}
+function ntBorrar(id){
+  const n = S.notas[id]; if(!n) return;
+  if(!confirm("¿Borrar esta nota?\n\n" + (n.texto||""))) return;
+  delete S.notas[id];
+  if(ntEditando===id) ntCancelar();
+  guardar(); ntPintar(); toast("🗑 Nota borrada");
+}
+function ntCiclo(id){
+  const n = S.notas[id]; if(!n) return;
+  n.sem = n.sem==="rojo" ? "amar" : n.sem==="amar" ? "verde" : "rojo";
+  guardar(); ntPintar();
+}
+function ntPintar(){
+  const cont = document.getElementById("ntLista"); if(!cont) return;
+  const ns = ntLista();
+  if(!ns.length){ cont.innerHTML = `<p class="sub" style="margin:0">Todavía no hay notas. Escribí una arriba.</p>`; return; }
+  const hoy = new Date().toISOString().slice(0,10);
+  cont.innerHTML = ns.map(n=>{
+    const s = NT_SEM[n.sem] || NT_SEM.amar;
+    const vencida = n.fecha && n.fecha < hoy && n.sem!=="verde";
+    const esHoy = n.fecha && n.fecha === hoy;
+    const fTxt = n.fecha ? (vencida? "⚠ vencida "+ppFmF(n.fecha) : esHoy? "📅 hoy" : "📅 "+ppFmF(n.fecha)) : "";
+    return `<div style="display:flex;gap:10px;align-items:flex-start;background:${s.bg};border:1px solid ${s.bd};border-radius:10px;padding:10px;margin-bottom:8px">
+      <button onclick="ntCiclo('${n.id}')" title="Cambiar semáforo (${s.nom})"
+        style="background:none;border:none;font-size:20px;cursor:pointer;line-height:1;padding:0">${s.ico}</button>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;word-break:break-word">${ppH(n.texto||"")}</div>
+        <div style="font-size:11px;color:${vencida?"var(--rojo)":"var(--gris)"};margin-top:2px">
+          ${s.nom}${fTxt? " · "+fTxt : ""}</div>
+      </div>
+      <div style="display:flex;gap:4px">
+        <button class="pp-ico" onclick="ntEditar('${n.id}')" title="Editar">✏️</button>
+        <button class="pp-ico" onclick="ntBorrar('${n.id}')" title="Borrar">🗑️</button>
+      </div></div>`;
+  }).join("");
 }
 
 function ppPintarTipoTC(){
