@@ -382,6 +382,19 @@
   </div>
 
   <div class="tarjeta">
+    <h3 class="tit">💾 Copia de seguridad</h3>
+    <p class="sub" style="margin-bottom:10px">Guarda en un archivo TODO lo de la app: simulador, parámetros, presupuestos (abiertos y cerrados), notas y cotizaciones. En la PC, "Guardar" te deja elegir la carpeta; en el celular va a Descargas, y con "Compartir" podés mandarlo a la app Archivos, a WhatsApp, etc.</p>
+    <div class="fila-botones">
+      <button class="btn peq" onclick="bkDescargar()">💾 Guardar backup</button>
+      <button class="btn peq sec" onclick="bkCompartir()">📤 Compartir backup</button>
+      <button class="btn peq linea" onclick="document.getElementById('bkArchivo').click()">📂 Restaurar desde archivo</button>
+      <input type="file" id="bkArchivo" accept=".json,application/json" style="display:none" onchange="bkRestaurar(this)">
+    </div>
+    <div class="nota-fecha" id="bkEstado" style="margin-top:8px"></div>
+    <div class="aviso">Al restaurar, la app queda exactamente como estaba en el backup y ese contenido se sincroniza a todos los teléfonos (pisa lo que haya ahora). Se pide confirmación antes.</div>
+  </div>
+
+  <div class="tarjeta">
     <h3 class="tit">🗑 Datos</h3>
     <button class="btn rojo" onclick="borrarTodo()">Borrar todos los datos guardados</button>
   </div>
@@ -1160,7 +1173,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 20;   // subir este número en cada actualización del archivo
+const VERSION_APP = 22;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -1370,6 +1383,109 @@ function verVista(id, bt){
   document.querySelectorAll("nav.principal button").forEach(b=>b.classList.remove("activo"));
   bt.classList.add("activo");
 }
+/* ============================================================
+   COPIA DE SEGURIDAD (backup / restaurar)
+   ============================================================ */
+function bkArmar(){
+  const est = JSON.parse(JSON.stringify(S));
+  delete est._mod;
+  return {
+    app: "Proyecciones Campo",
+    version: VERSION_APP,
+    fecha: new Date().toISOString(),
+    resumen: {
+      presupuestos: Object.keys(S.presu||{}).length,
+      notas: Object.keys(S.notas||{}).length,
+      cultivos: Object.keys((S.params||{}).cultivos||{}).length
+    },
+    estado: est
+  };
+}
+function bkNombre(){
+  const d=new Date();
+  const f=d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2)
+        +"_"+("0"+d.getHours()).slice(-2)+("0"+d.getMinutes()).slice(-2);
+  return "backup_proyecciones_campo_"+f+".json";
+}
+function bkEstado(msg, mal){ const el=document.getElementById("bkEstado"); if(el){ el.textContent=msg; el.classList.toggle("vieja",!!mal);} }
+async function bkDescargar(){
+  const b = bkArmar();
+  const contenido = JSON.stringify(b, null, 1);
+  const nombre = bkNombre();
+  const detalle = " ("+b.resumen.presupuestos+" presupuestos, "+b.resumen.notas+" notas)";
+  // 1) PC (Chrome/Edge): elegir carpeta y nombre con el explorador de archivos
+  if(window.showSaveFilePicker){
+    try{
+      const handle = await window.showSaveFilePicker({
+        suggestedName: nombre,
+        types: [{description:"Backup Proyecciones Campo", accept:{"application/json":[".json"]}}]
+      });
+      const w = await handle.createWritable();
+      await w.write(contenido); await w.close();
+      bkEstado("✔ Backup guardado como "+handle.name+detalle);
+      toast("✔ Backup guardado en la carpeta elegida");
+      return;
+    }catch(e){
+      if(e && e.name==="AbortError"){ toast("Guardado cancelado"); return; }
+      // si falla el selector, sigue con la descarga común
+    }
+  }
+  // 2) Resto (celular, otros navegadores): descarga a la carpeta de Descargas
+  try{
+    const blob = new Blob([contenido], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href=url; a.download=nombre;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 5000);
+    bkEstado("✔ Backup descargado en Descargas: "+nombre+detalle);
+    toast("⬇ Backup descargado en Descargas");
+  }catch(e){ toast("No se pudo generar el backup: "+(e.message||e)); }
+}
+async function bkCompartir(){
+  const b = bkArmar();
+  const blob = new Blob([JSON.stringify(b, null, 1)], {type:"application/json"});
+  const archivo = new File([blob], bkNombre(), {type:"application/json"});
+  try{
+    if(navigator.canShare && navigator.canShare({files:[archivo]})){
+      await navigator.share({files:[archivo], title:"Backup Proyecciones Campo",
+        text:"Backup Proyecciones Campo del "+HOY()+" · "+b.resumen.presupuestos+" presupuestos · "+b.resumen.notas+" notas"});
+      bkEstado("✔ Backup compartido ("+HOY()+")");
+    }else{
+      bkDescargar();
+      toast("Este equipo no tiene menú de compartir: se descargó el archivo para que lo adjuntes a mano.");
+    }
+  }catch(e){ if(e && e.name!=="AbortError") toast("No se pudo compartir: "+(e.message||e)); }
+}
+function bkRestaurar(input){
+  const f = input.files && input.files[0]; if(!f) return;
+  const lector = new FileReader();
+  lector.onload = () => {
+    input.value = "";
+    let b;
+    try{ b = JSON.parse(lector.result); }
+    catch(e){ toast("El archivo no es un backup válido (no se pudo leer)."); return; }
+    const est = (b && b.estado && typeof b.estado==="object") ? b.estado : (b && b.params ? b : null);
+    if(!est || !est.params){ toast("El archivo no es un backup de Proyecciones Campo."); return; }
+    const fecha = b.fecha ? new Date(b.fecha) : null;
+    const fTxt = fecha && !isNaN(fecha) ? fecha.toLocaleString("es-AR") : "fecha desconocida";
+    const r = b.resumen || {presupuestos:Object.keys(est.presu||{}).length, notas:Object.keys(est.notas||{}).length};
+    const actual = {p:Object.keys(S.presu||{}).length, n:Object.keys(S.notas||{}).length};
+    if(!confirm("RESTAURAR BACKUP\n\nArchivo: "+f.name+"\nDel: "+fTxt+"\nContiene: "+(r.presupuestos||0)+" presupuestos, "+(r.notas||0)+" notas.\n\n"
+      +"Lo que hay AHORA ("+actual.p+" presupuestos, "+actual.n+" notas) se reemplaza por completo y se sincroniza a TODOS los teléfonos.\n\n¿Confirmás?")) return;
+    try{
+      S = completarEstado(est);
+      guardar();                  // diff contra la nube: sube lo nuevo y borra lo que ya no está
+      volcarInputs(); calc();
+      if(typeof ppRender==="function") ppRender();
+      if(typeof ntPintar==="function") ntPintar();
+      bkEstado("✔ Restaurado el backup del "+fTxt);
+      toast("✔ Backup restaurado y sincronizando");
+    }catch(e){ toast("No se pudo restaurar: "+(e.message||e)); }
+  };
+  lector.onerror = () => { input.value=""; toast("No se pudo leer el archivo."); };
+  lector.readAsText(f);
+}
+
 function borrarTodo(){
   if(!confirm("¿Borrar TODOS los datos guardados (precios, parámetros, cargas)?")) return;
   localStorage.removeItem(LSKEY); localStorage.removeItem(PENDKEY);
