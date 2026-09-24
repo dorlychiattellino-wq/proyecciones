@@ -1209,7 +1209,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 27;   // subir este número en cada actualización del archivo
+const VERSION_APP = 29;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -2009,7 +2009,7 @@ function insLoteDesdeCultivo(id){
 /* ============================================================
    2) DOSIS POR CULTIVO
    ============================================================ */
-let insDosCul = "", insDosHas = "";
+let insDosCul = "", insDosHas = "", insDosTodos = false;
 function insHtmlDosis(){
   const d=insD(), culs=d.cultivos||[];
   if(!insDosCul) insDosCul = culs[0]||"";
@@ -2017,7 +2017,8 @@ function insHtmlDosis(){
   // filas: insumos en dosisCultivo o usados en algún lote
   const usados = new Set(Object.keys(d.dosisCultivo||{}));
   insLotes().forEach(l=>Object.keys(l.dosis||{}).forEach(k=>{ if(num(l.dosis[k])>0) usados.add(k); }));
-  const filas = insLista().filter(i=>usados.has(insKey(i)));
+  const tieneDosis = i => num((((d.dosisCultivo||{})[insKey(i)]||{}).dosis||{})[insDosCul])>0;
+  const filas = insLista().filter(i=>usados.has(insKey(i))).filter(i=>insDosTodos || tieneDosis(i));
   const libres = insLista().filter(i=>!usados.has(insKey(i)));
   let cnt=0;
   let h = `<div class="tarjeta">
@@ -2027,6 +2028,7 @@ function insHtmlDosis(){
       <div class="campo-form"><label>Cultivo seleccionado</label><select onchange="insDosCul=this.value;insRender()">${insOpts(culs, insDosCul)}</select></div>
       <div class="campo-form"><label>Hectáreas</label><input type="text" inputmode="decimal" value="${ppH(insDosHas)}" placeholder="0" onchange="insDosHas=this.value;insRender()"></div>
     </div>
+    <div class="campo-form"><label>Mostrar</label><select onchange="insDosTodos=this.value==='1';insRender()"><option value="0" ${!insDosTodos?"selected":""}>Solo los insumos que usa ${ppH(insDosCul)}</option><option value="1" ${insDosTodos?"selected":""}>Todos los insumos (para cargar dosis a otros cultivos)</option></select></div>
     <div class="fila-botones">
       <button class="btn peq linea" onclick="insDosisRecalcular()">↻ Recalcular promedios desde los lotes</button>
       <select style="flex:1;min-width:200px" onchange="if(this.value){insSet('dosisCultivo/'+this.value+'/obs','');insRender();}">${insOpts([], "", "— Agregar insumo a la tabla —")}${libres.map(i=>`<option value="${insKey(i)}">${ppH(i.nombre)}</option>`).join("")}</select>
@@ -2036,7 +2038,6 @@ function insHtmlDosis(){
   filas.forEach(i=>{
     const id=insKey(i), dc=(d.dosisCultivo||{})[id]||{dosis:{},obs:""};
     const ds=num((dc.dosis||{})[insDosCul]);
-    if(ds>0) cnt++;
     h += `<tr><td style="font-weight:700">${ppH(i.nombre)}</td><td>${ppH(i.unidad||"")}</td>`;
     culs.forEach(c=>{
       const v=(dc.dosis||{})[c];
@@ -2048,7 +2049,7 @@ function insHtmlDosis(){
           <td><button class="pp-ico" onclick="insDosisQuitar('${id}')" title="Sacar de la tabla">✕</button></td></tr>`;
   });
   h += `</tbody></table></div>
-    <div class="aviso">Insumos requeridos por ${ppH(insDosCul)}: <b>${cnt}</b>. Las dosis salen de la hoja "Por lote": cuando un cultivo tenía dosis distintas según el lote se tomó el promedio y la variante queda en Observaciones.</div>
+    <div class="aviso">Insumos requeridos por ${ppH(insDosCul)}: <b>${insLista().filter(i=>usados.has(insKey(i))&&tieneDosis(i)).length}</b>.${!insDosTodos?" Los insumos sin dosis para "+ppH(insDosCul)+" están ocultos: elegí \"Todos los insumos\" para verlos o cargarles una dosis.":""} Las dosis salen de la hoja "Por lote": cuando un cultivo tenía dosis distintas según el lote se tomó el promedio y la variante queda en Observaciones.</div>
   </div>`;
   return h;
 }
@@ -2248,44 +2249,49 @@ function insUsarVariacion(k){
 /* ============================================================
    PARÁMETROS: aumento proyectado de gastos por insumos
    ============================================================ */
+function partDe(c){ // participación de insumos para un cultivo (propia o la general)
+  const cc=S.params.cultivos[c]||{};
+  return (cc.partInsumos!==undefined && String(cc.partInsumos).trim()!=="") ? num(cc.partInsumos) : num(S.params.partInsumos);
+}
 function pintarVarInsumos(){
   const el=document.getElementById("varInsumosCard"); if(!el) return;
-  const v=num(S.params.varInsumos), p=num(S.params.partInsumos);
-  const aum = v*p/100;   // % de aumento del total de gastos
+  const v=num(S.params.varInsumos);
   let filas="";
   Object.keys(S.params.cultivos||{}).forEach(c=>{
-    const cc=S.params.cultivos[c];
+    const cc=S.params.cultivos[c], p=partDe(c), aum=v*p/100, propia=(cc.partInsumos!==undefined && String(cc.partInsumos).trim()!=="");
     const nCon=num(cc.pctCon)*(1+aum/100), nSin=num(cc.pctSin)*(1+aum/100);
-    filas += `<tr><td style="font-weight:700">${ppH(c)}</td><td style="text-align:right">${insFm(num(cc.pctCon))}%</td><td style="text-align:right;font-weight:800;color:var(--verde)">${insFm(nCon)}%</td><td style="text-align:right">${insFm(num(cc.pctSin))}%</td><td style="text-align:right;font-weight:800;color:var(--verde)">${insFm(nSin)}%</td></tr>`;
+    filas += `<tr><td style="font-weight:700">${ppH(c)}</td>
+      <td style="text-align:right"><input type="text" inputmode="decimal" value="${propia?ppH(cc.partInsumos):""}" placeholder="${insFm(num(S.params.partInsumos))}" title="Vacío = usa la participación general" style="width:70px;text-align:right;padding:5px;color:#0044cc" onchange="S.params.cultivos['${c.replace(/'/g,"\\'")}'].partInsumos=this.value.trim();guardar();pintarVarInsumos()"></td>
+      <td style="text-align:right;font-weight:800;color:${aum>0?"var(--rojo)":aum<0?"var(--verde-ok)":"var(--tinta)"}">${(aum>=0?"+":"")+insFm(aum)}%</td>
+      <td style="text-align:right">${insFm(num(cc.pctCon))}%</td><td style="text-align:right;font-weight:800;color:var(--verde)">${insFm(nCon)}%</td>
+      <td style="text-align:right">${insFm(num(cc.pctSin))}%</td><td style="text-align:right;font-weight:800;color:var(--verde)">${insFm(nSin)}%</td></tr>`;
   });
+  const hayAlgo = Object.keys(S.params.cultivos||{}).some(c=>v*partDe(c)!==0);
   el.innerHTML = `<h3 class="tit">📈 Aumento proyectado de gastos por insumos</h3>
-    <p class="sub" style="margin-bottom:8px">La variación viene de la pestaña <b>Insumos → Precios por campaña</b>. Indicá qué parte del total de gastos son insumos y se proyecta el aumento de los % de gastos de cada cultivo.</p>
+    <p class="sub" style="margin-bottom:8px">La variación viene de la pestaña <b>Insumos → Precios por campaña</b>. La participación de los insumos en el total de gastos se carga <b>por cultivo</b> (maíz suele ser mayor que girasol y soja); la general se usa como valor por defecto para los cultivos que no tengan la suya.</p>
     <div class="fila2">
       <div class="campo-form"><label>Variación de precios de insumos (%)</label>
         <input type="text" inputmode="decimal" value="${S.params.varInsumos!==undefined&&S.params.varInsumos!==""?ppH(S.params.varInsumos):""}" onchange="S.params.varInsumos=this.value;S.params.varInsumosNota='cargado a mano '+HOY();guardar();pintarVarInsumos()">
         <div class="nota-fecha">${ppH(S.params.varInsumosNota||"sin cargar")}</div></div>
-      <div class="campo-form"><label>Participación de los insumos en el total de gastos (%)</label>
+      <div class="campo-form"><label>Participación general (por defecto) de los insumos en los gastos (%)</label>
         <input type="text" inputmode="decimal" value="${S.params.partInsumos!==undefined?ppH(S.params.partInsumos):""}" placeholder="Ej: 45" onchange="S.params.partInsumos=this.value;guardar();pintarVarInsumos()">
-        <div class="nota-fecha">Ej.: si los insumos son el 45% de los gastos y subieron 3,7%, el total de gastos sube 1,67%.</div></div>
+        <div class="nota-fecha">Aumento del total de gastos = variación × participación ÷ 100. Ej.: 4,59 % × 51 % = 2,34 %.</div></div>
     </div>
-    <div class="balance" style="padding:10px;border-radius:10px;margin-bottom:10px">
-      <div style="font-size:11px;font-weight:800;color:var(--gris);text-transform:uppercase">Aumento proyectado del total de gastos</div>
-      <div style="font-size:22px;font-weight:800;color:${aum>0?"var(--rojo)":aum<0?"var(--verde-ok)":"var(--tinta)"}">${(aum>=0?"+":"")+insFm(aum)}%</div>
-      <div style="font-size:11px;color:var(--gris)">${insFm(v)}% × ${insFm(p)}% ÷ 100</div>
-    </div>
-    <div class="pp-scroll"><table class="pp-tab"><thead><tr><th>Cultivo</th><th style="text-align:right">% CON actual</th><th style="text-align:right">→ proyectado</th><th style="text-align:right">% SIN actual</th><th style="text-align:right">→ proyectado</th></tr></thead><tbody>${filas}</tbody></table></div>
-    <div class="fila-botones"><button class="btn peq sec" ${aum?"":"disabled"} onclick="aplicarVarInsumos()">✔ Aplicar el aumento a los % de gastos</button></div>
-    <div class="aviso">${S.params.varInsumosAplicado? "<b>Último ajuste aplicado a los % de gastos:</b> "+ppH(S.params.varInsumosAplicado)+"<br>" : "<b>Todavía no se aplicó ningún ajuste:</b> los % de gastos de arriba son los originales.<br>"}Al aplicar, cada % de gastos (CON y SIN gtos com., de todos los cultivos) se multiplica por (1 + aumento) y queda como nuevo parámetro para el simulador. Se pide confirmación y se actualiza en todos los teléfonos.</div>`;
+    <div class="pp-scroll"><table class="pp-tab"><thead><tr><th>Cultivo</th><th style="text-align:right">Partic. insumos %</th><th style="text-align:right">Aumento gastos</th><th style="text-align:right">% CON actual</th><th style="text-align:right">→ proyectado</th><th style="text-align:right">% SIN actual</th><th style="text-align:right">→ proyectado</th></tr></thead><tbody>${filas}</tbody></table></div>
+    <div class="fila-botones"><button class="btn peq sec" ${hayAlgo?"":"disabled"} onclick="aplicarVarInsumos()">✔ Aplicar el aumento a los % de gastos</button></div>
+    <div class="aviso">${S.params.varInsumosAplicado? "<b>Último ajuste aplicado a los % de gastos:</b> "+ppH(S.params.varInsumosAplicado)+"<br>" : "<b>Todavía no se aplicó ningún ajuste:</b> los % de gastos de arriba son los originales.<br>"}Al aplicar, cada % de gastos (CON y SIN gtos com.) se multiplica por (1 + aumento de ese cultivo) y queda como nuevo parámetro para el simulador. Se pide confirmación y se actualiza en todos los teléfonos.</div>`;
 }
 function aplicarVarInsumos(){
-  const v=num(S.params.varInsumos), p=num(S.params.partInsumos), aum=v*p/100;
-  if(!aum){ toast("Cargá la variación y la participación primero"); return; }
-  const culs=Object.keys(S.params.cultivos||{});
-  if(!confirm("Aplicar un aumento de "+insFm(aum)+"% a los % de gastos de "+culs.length+" cultivos?\n\nEj.: "+(culs[0]||"")+" CON "+insFm(num((S.params.cultivos[culs[0]]||{}).pctCon))+"% → "+insFm(num((S.params.cultivos[culs[0]]||{}).pctCon)*(1+aum/100))+"%\n\nSe actualiza en todos los teléfonos. ¿Confirmás?")) return;
-  culs.forEach(c=>{ const cc=S.params.cultivos[c];
+  const v=num(S.params.varInsumos);
+  const culs=Object.keys(S.params.cultivos||{}).filter(c=>v*partDe(c)!==0);
+  if(!culs.length){ toast("Cargá la variación y la participación primero"); return; }
+  const lineas = culs.map(c=>{ const cc=S.params.cultivos[c], aum=v*partDe(c)/100;
+    return c+": partic. "+insFm(partDe(c))+"% → "+(aum>=0?"+":"")+insFm(aum)+"%  (CON "+insFm(num(cc.pctCon))+"→"+insFm(num(cc.pctCon)*(1+aum/100))+"%, SIN "+insFm(num(cc.pctSin))+"→"+insFm(num(cc.pctSin)*(1+aum/100))+"%)"; });
+  if(!confirm("Aplicar el aumento por insumos a los % de gastos:\n\n"+lineas.join("\n")+"\n\nSe actualiza en todos los teléfonos. ¿Confirmás?")) return;
+  culs.forEach(c=>{ const cc=S.params.cultivos[c], aum=v*partDe(c)/100;
     cc.pctCon=String(Math.round(num(cc.pctCon)*(1+aum/100)*100)/100);
     cc.pctSin=String(Math.round(num(cc.pctSin)*(1+aum/100)*100)/100); });
-  S.params.varInsumosAplicado = (aum>=0?"+":"")+insFm(aum)+"% ("+ppH(S.params.varInsumosNota||"")+", participación "+insFm(p)+"%) aplicado el "+HOY();
+  S.params.varInsumosAplicado = "variación "+(v>=0?"+":"")+insFm(v)+"% ("+ppH(S.params.varInsumosNota||"")+") · "+culs.map(c=>c+" partic. "+insFm(partDe(c))+"% → "+(v*partDe(c)>=0?"+":"")+insFm(v*partDe(c)/100)+"%").join(", ")+" · aplicado el "+HOY();
   guardar(); pintarCultivosParam(); pintarVarInsumos(); calc();
   toast("✔ % de gastos actualizados con el aumento de insumos");
 }
