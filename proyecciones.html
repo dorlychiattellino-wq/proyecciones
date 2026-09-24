@@ -100,6 +100,9 @@
   .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--verde-osc);color:#fff;padding:11px 20px;border-radius:24px;font-size:14px;box-shadow:var(--sombra);z-index:99;opacity:0;pointer-events:none;transition:opacity .3s;max-width:90%;text-align:center}
   .toast.ver{opacity:1}
   .pp-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .subnav{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+  .subnav button{background:#fff;border:1.5px solid var(--gris-cl);color:var(--tinta);padding:8px 12px;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer}
+  .subnav button.activo{background:var(--verde);border-color:var(--verde);color:#fff}
   .pp-tab{width:100%;border-collapse:collapse;font-size:12.5px;min-width:760px}
   .pp-tab th{background:var(--verde);color:#fff;text-align:left;padding:8px 7px;font-size:11px;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
   .pp-tab td{padding:7px;border-bottom:1px solid var(--gris-cl);vertical-align:top}
@@ -126,6 +129,7 @@
   <button class="activo" data-v="vSim" onclick="verVista('vSim',this)">📊 Simulador</button>
   <button data-v="vPresu" onclick="verVista('vPresu',this)">💰 Presupuestos</button>
   <button data-v="vNotas" onclick="verVista('vNotas',this)">📝 Notas</button>
+  <button data-v="vInsumos" onclick="verVista('vInsumos',this);insRender()">🧪 Insumos</button>
   <button data-v="vParam" onclick="verVista('vParam',this)">⚙️ Parámetros</button>
 </nav>
 
@@ -327,6 +331,19 @@
   </div>
 </section>
 
+<!-- ==================== INSUMOS DE CAMPAÑA ==================== -->
+<section id="vInsumos" class="vista">
+  <h2 class="sec">Insumos de campaña</h2>
+  <p class="sub">Insumos por lote, dosis por cultivo, lista de compra y precios por campaña. Todo se comparte entre los teléfonos.</p>
+  <div class="subnav">
+    <button data-s="lotes" class="activo" onclick="insVer('lotes')">🌾 Por lote</button>
+    <button data-s="dosis" onclick="insVer('dosis')">🧪 Dosis por cultivo</button>
+    <button data-s="lista" onclick="insVer('lista')">📋 Lista campaña</button>
+    <button data-s="precios" onclick="insVer('precios')">📈 Precios por campaña</button>
+  </div>
+  <div id="insCuerpo"></div>
+</section>
+
 <!-- ==================== PARÁMETROS ==================== -->
 <section id="vParam" class="vista">
   <h2 class="sec">Parámetros</h2>
@@ -380,6 +397,8 @@
     <div class="nota-fecha" id="syncEstado" style="margin-top:8px">Sin sincronización: los datos quedan solo en este teléfono.</div>
     <div class="aviso">Sincronización <b>en tiempo real</b>: lo que carga un teléfono aparece al instante en los demás. Cada dato se guarda por separado, así un teléfono nunca puede pisar los datos que no tocó. Sin señal, los cambios quedan guardados en el teléfono y se suben solos al volver la conexión.</div>
   </div>
+
+  <div class="tarjeta" id="varInsumosCard"></div>
 
   <div class="tarjeta">
     <h3 class="tit">💾 Copia de seguridad</h3>
@@ -467,10 +486,12 @@ function estadoInicial(){
                  "Girasol":{pctCon:"45",pctSin:"40",obs:"",precioTn:"",moneda:"ARS",fecha:""},
                  "Soja":{pctCon:"45",pctSin:"40",obs:"",precioTn:"",moneda:"ARS",fecha:""} },
       kgAnimal:{}, // se completa con defaults
-      tcCompra:"", tcVenta:"", tcFecha:""
+      tcCompra:"", tcVenta:"", tcFecha:"",
+      varInsumos:"", varInsumosNota:"", partInsumos:""
     },
     presu:{},              // presupuestos de insumos: {id: {...}}
     notas:{},              // notas / recordatorios con semáforo: {id: {...}}
+    ins: JSON.parse(JSON.stringify(INS_SEED)),   // insumos de campaña (lotes, dosis, precios)
     presuTC:{venta:"",fecha:""},    // dólar BNA vendedor usado en presupuestos
     presuTCMay:{venta:"",fecha:""}  // dólar mayorista vendedor usado en presupuestos
   };
@@ -868,7 +889,7 @@ function cambiarPctCultivo(nom, campo, el){
   if(String(el.value)===String(viejo)) return;
   const etiqueta = campo==="pctCon" ? "% CON gtos com." : "% SIN gtos com.";
   if(confirm("Vas a cambiar el "+etiqueta+" de "+nom.toUpperCase()+":\n\n   "+(viejo||"(vacío)")+"%  →  "+el.value+"%\n\nSe actualiza en todos los teléfonos. ¿Confirmás?")){
-    c[campo] = el.value; guardar(); calc();
+    c[campo] = el.value; guardar(); calc(); if(typeof pintarVarInsumos==="function") pintarVarInsumos();
   }else el.value = viejo;
 }
 function pintarCultivosParam(){
@@ -1173,7 +1194,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 22;   // subir este número en cada actualización del archivo
+const VERSION_APP = 24;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -1790,6 +1811,445 @@ function ppPintarCerrados(){
         <td style="white-space:nowrap;font-size:12px">${r.cerradoEn?ppFmF(r.cerradoEn.slice(0,10)):"—"}</td>
         <td style="white-space:nowrap"><button class="btn peq linea" onclick="ppAbrir('${r.id}')">🔓 Abrir</button> <button class="pp-ico" onclick="ppBorrar('${r.id}')">🗑️</button></td></tr>`; }).join("")}
       </tbody></table></div>` : ""}`;
+}
+
+/* ============================================================
+   INSUMOS DE CAMPAÑA (funciones con prefijo "ins")
+   Datos en S.ins:
+     insumos{id:{nombre,categoria,unidad,obs,precios{campaña:precio},ord}}
+     lotes{id:{nombre,has,cultivo,dosis{insumoId:dosis/ha},ord}}
+     dosisCultivo{insumoId:{dosis{cultivo:dosis/ha},obs}}
+     cultivos[], campanas[], campBase, campActual, tc, stock{insumoId:n},
+     comentarios, campania
+   ============================================================ */
+const INS_SEED = {"insumos":{"2_4_d_advance":{"nombre":"2,4 D Advance","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":5,"2026/2027":4.6},"ord":0},"2_4_d_enlist":{"nombre":"2,4 D Enlist","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":4.8,"2026/2027":4.8},"ord":1},"2_4_d_micro_emulsion_30":{"nombre":"2,4 D Micro Emulsión 30 %","categoria":"","unidad":"lt","obs":"","precios":{"2026/2027":3.18},"ord":2},"abamectina":{"nombre":"Abamectina","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025/2026":10.55},"ord":3},"aceite_ttm":{"nombre":"Aceite TTM","categoria":"Coadyuvante","unidad":"Lts","obs":"","precios":{"2025/2026":15,"2026/2027":15},"ord":4},"all_ok":{"nombre":"All Ok","categoria":"","unidad":"lt","obs":"","precios":{"2026/2027":21},"ord":5},"ampligo_zariva":{"nombre":"Ampligo Zariva","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025/2026":95.2,"2026/2027":84.6},"ord":6},"ariette":{"nombre":"Ariette","categoria":"","unidad":"lt","obs":"","precios":{"2026/2027":14.8},"ord":7},"atrazina_granulada_90":{"nombre":"Atrazina Granulada 90 %","categoria":"Herbicida","unidad":"Kgs","obs":"primerar Marcas, como Gesaprim o Trac 90","precios":{"2025/2026":5.4,"2026/2027":5.82},"ord":8},"bifentrin_zamuray":{"nombre":"Bifentrin Zamuray","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025/2026":7.2},"ord":9},"clearsol_pack_6_has":{"nombre":"Clearsol (pack 6 has)","categoria":"","unidad":"pack","obs":"","precios":{"2026/2027":97.4},"ord":10},"cletodim_24":{"nombre":"Cletodim 24 %","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":7.75,"2026/2027":6.5},"ord":11},"coragen_evo":{"nombre":"Coragen Evo","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025/2026":233},"ord":12},"dicamba_57_8":{"nombre":"Dicamba 57,8%","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":6.57},"ord":13},"elevore":{"nombre":"Elevore","categoria":"Herbicida","unidad":"lt","obs":"","precios":{"2025/2026":150,"2026/2027":140},"ord":14},"exito":{"nombre":"Éxito","categoria":"Coadyuvante/Compatibilizador","unidad":"Lts","obs":"","precios":{"2025/2026":17.3},"ord":15},"expedition":{"nombre":"Expedition","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025/2026":29.6},"ord":16},"flumioxazin_48":{"nombre":"Flumioxazin 48 %","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":17.75,"2026/2027":17.5},"ord":17},"funcion_pack":{"nombre":"Función Pack","categoria":"","unidad":"caja","obs":"Caja para curar e inocular soja. Cada caja son para 3000 kg cada una. Es en el caso que se clasifique soja de uso propio. Se calculo 70 kilos de soja/ha","precios":{"2026/2027":400},"ord":18},"galant_max_93_5":{"nombre":"Galant Max 93.5%","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":43.5},"ord":19},"girasol_brevant_brv4225_cl_g1_150_000_semillas":{"nombre":"Girasol Brevant BRV4225 CL G1 (150.000 semillas)","categoria":"Semilla","unidad":"Bolsa","obs":"Girasol para Cuadro y Olgado","precios":{"2025/2026":224.2,"2026/2027":270},"ord":20},"girasol_sps_3125_cl_b1_180_000_semillas":{"nombre":"Girasol SPS 3125 CL B1 (180.000 semillas","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2026/2027":260},"ord":21},"glifosato_granulado_72":{"nombre":"Glifosato granulado 72 %","categoria":"","unidad":"Kgs","obs":"","precios":{"2025/2026":4.98,"2026/2027":5.95},"ord":22},"glufosinato_amonio_20":{"nombre":"Glufosinato Amonio 20 %","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":3.5,"2026/2027":3.5},"ord":23},"heat_adjeva":{"nombre":"Heat Adjeva","categoria":"Herbicida","unidad":"Grs","obs":"","precios":{"2025/2026":302,"2026/2027":292},"ord":24},"lambda_al_25":{"nombre":"Lambda al 25","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025/2026":35.2,"2026/2027":35.2},"ord":25},"maiz_brevant_brv8421_pwuen_spc":{"nombre":"Maíz Brevant BRV8421 Pwuen SPC","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2025/2026":136,"2026/2027":146},"ord":26},"maiz_la_tijereta_lt720vt3_b2_doble_prop":{"nombre":"Maíz La Tijereta LT720VT3 B2 Doble Prop.","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2026/2027":131},"ord":27},"maiz_la_tijereta_lt722vt3_b3":{"nombre":"Maíz La Tijereta LT722VT3 B3","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2026/2027":103},"ord":28},"maiz_sps_2724_tg_cl_b3":{"nombre":"Maíz SPS 2724 TG/CL B3","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{},"ord":29},"maiz_sps_2743_viptera_b3_doble_prop":{"nombre":"Maíz SPS 2743 Viptera B3 Doble Prop.","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2026/2027":130},"ord":30},"maiz_syngenta_nk825_cl_b1":{"nombre":"Maíz Syngenta NK825 CL B1","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2026/2027":152},"ord":31},"map_monoamonico":{"nombre":"MAP(Monoamónico)","categoria":"Fertilizante","unidad":"Kgs","obs":"","precios":{"2025/2026":0.955,"2026/2027":1.005},"ord":32},"mesotrione_48":{"nombre":"Mesotrione 48 %","categoria":"","unidad":"lt","obs":"","precios":{"2026/2027":22.15},"ord":33},"paraquat":{"nombre":"Paraquat","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":3.3,"2026/2027":3.3},"ord":34},"picloran":{"nombre":"Picloran","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":9,"2026/2027":8.5},"ord":35},"piroxasulfone_48":{"nombre":"Piroxasulfone 48 %","categoria":"","unidad":"lt","obs":"","precios":{"2026/2027":62},"ord":36},"power_plus":{"nombre":"Power Plus","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":4.12,"2026/2027":4.45},"ord":37},"silobolsa_9x75":{"nombre":"Silobolsa 9x75","categoria":"Almacenaje","unidad":"Unidad","obs":"","precios":{"2026/2027":450},"ord":38},"s_metalacloro":{"nombre":"S-Metalacloro","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":5.82,"2026/2027":6.67},"ord":39},"soja_dm46e25_sts_se_bbx800_kg":{"nombre":"Soja DM46E25 STS SE BBx800 kg","categoria":"Semilla","unidad":"BB","obs":"","precios":{"2025/2026":3996},"ord":40},"sttager":{"nombre":"Sttager","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":42.4,"2026/2027":40.2},"ord":41},"sulfato_amonio":{"nombre":"Sulfato Amonio","categoria":"Fertilizante","unidad":"Lts","obs":"","precios":{"2025/2026":1.65,"2026/2027":1.1},"ord":42},"sulfentrazone_50":{"nombre":"Sulfentrazone 50 %","categoria":"Herbicida","unidad":"Lts","obs":"Primeras marcas","precios":{"2025/2026":17.8,"2026/2027":19.05},"ord":43},"girasol_syn_397_o_nk_3969_180_000_semillas":{"nombre":"Girasol SYN 397 o NK 3969 (180.000 semillas)","categoria":"Semilla","unidad":"Bolsa","obs":"Para girasol sobre girasol por buen comportamiento a enfermedades. Bolsa de 180 mil Semilla. Se puso para Brambilla y Zabala. Cualquiera de los dos son los mejores girasoles del mercado","precios":{"2026/2027":290},"ord":44},"urea_azufrada_38_4_protegida":{"nombre":"Urea Azufrada 38-4  protegida","categoria":"Fertilizante","unidad":"Kgs","obs":"Se calculo 180 kg de urea azufrada (37 % Nitrógeno y 4 % azufre) por hectárea","precios":{"2025/2026":0.585,"2026/2027":0.64},"ord":45},"glifosato_panzar_gold":{"nombre":"Glifosato Panzar Gold","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":4.2},"ord":46},"bio_verde_sil":{"nombre":"Bio verde Sil","categoria":"Coadyuvante","unidad":"Lts","obs":"","precios":{"2025/2026":30},"ord":47},"banvel":{"nombre":"Banvel","categoria":"","unidad":"","obs":"","precios":{},"ord":48},"karate_zeon":{"nombre":"Karate Zeon","categoria":"","unidad":"","obs":"","precios":{},"ord":49},"haloxifop_54_zavobia":{"nombre":"Haloxifop 54 Zavobia","categoria":"","unidad":"","obs":"","precios":{},"ord":50},"dilfufenican_50":{"nombre":"Dilfufenican 50 %","categoria":"","unidad":"","obs":"","precios":{},"ord":51},"map_con_zinc":{"nombre":"Map con Zinc","categoria":"","unidad":"","obs":"","precios":{},"ord":52},"urea_azufrada_no_protegida":{"nombre":"Urea azufrada no protegida","categoria":"","unidad":"","obs":"","precios":{},"ord":53},"vitracto_pack":{"nombre":"Vitracto Pack","categoria":"","unidad":"","obs":"","precios":{},"ord":54},"quintal_extra":{"nombre":"Quintal Extra","categoria":"","unidad":"","obs":"","precios":{},"ord":55},"elatus_ace":{"nombre":"Elatus Ace","categoria":"","unidad":"","obs":"","precios":{},"ord":56},"miravis_duo":{"nombre":"Miravis Duo","categoria":"","unidad":"","obs":"","precios":{},"ord":57},"sorgo_forrajero_advanta_2650_ig":{"nombre":"Sorgo Forrajero Advanta 2650 IG","categoria":"","unidad":"bolsa","obs":"Girasol Igrow. Se calculó 13 kilos/ha en bolsas de 20 kg cada una","precios":{"2026/2027":89},"ord":58},"axial":{"nombre":"Axial","categoria":"","unidad":"","obs":"","precios":{},"ord":59}},"lotes":{"l01":{"nombre":"Zabala Girasol","has":102,"cultivo":"Girasol","dosis":{"glifosato_granulado_72":3.0,"2_4_d_micro_emulsion_30":2.5,"ampligo_zariva":0.1,"sttager":0.15,"aceite_ttm":0.2,"cletodim_24":0.5,"elevore":0.12,"sulfato_amonio":1.6,"sulfentrazone_50":0.3,"s_metalacloro":1.0,"lambda_al_25":0.05,"girasol_syn_397_o_nk_3969_180_000_semillas":0.32},"ord":0},"l02":{"nombre":"Zabala sorgo Foorajero CL","has":0,"cultivo":"Sorgo","dosis":{"power_plus":6.0,"atrazina_granulada_90":2.0,"2_4_d_micro_emulsion_30":2.5,"clearsol_pack_6_has":0.16,"sulfato_amonio":2.0,"picloran":0.13,"sorgo_forrajero_advanta_2650_ig":0.65},"ord":1},"l03":{"nombre":"Olgado Soja","has":16,"cultivo":"Soja","dosis":{"glifosato_granulado_72":3.5,"aceite_ttm":0.6,"all_ok":0.3,"cletodim_24":1.0,"flumioxazin_48":0.12,"sulfato_amonio":2.0,"glufosinato_amonio_20":4.0,"sulfentrazone_50":0.45,"heat_adjeva":0.035,"2_4_d_enlist":3.0,"ariette":0.2,"s_metalacloro":1.0,"funcion_pack":0.023},"ord":2},"l04":{"nombre":"Cuadrodo Girasol","has":37,"cultivo":"Girasol","dosis":{"glifosato_granulado_72":3.0,"paraquat":2.0,"2_4_d_micro_emulsion_30":2.5,"ampligo_zariva":0.1,"sttager":0.15,"aceite_ttm":0.4,"cletodim_24":0.5,"clearsol_pack_6_has":0.16,"elevore":0.12,"sulfato_amonio":1.6,"sulfentrazone_50":0.3,"s_metalacloro":1.0,"lambda_al_25":0.05,"girasol_brevant_brv4225_cl_g1_150_000_semillas":0.32},"ord":3},"l05":{"nombre":"Brambilla girasol","has":0,"cultivo":"Girasol","dosis":{"glifosato_granulado_72":1.5,"ampligo_zariva":0.1,"sttager":0.15,"aceite_ttm":0.4,"clearsol_pack_6_has":0.16,"sulfato_amonio":1.6,"sulfentrazone_50":0.2,"piroxasulfone_48":0.3,"lambda_al_25":0.05,"girasol_syn_397_o_nk_3969_180_000_semillas":0.32},"ord":4},"l06":{"nombre":"Manasse Maíz","has":59,"cultivo":"Maíz","dosis":{"power_plus":2.0,"atrazina_granulada_90":2.6,"ampligo_zariva":0.1,"aceite_ttm":0.2,"all_ok":0.6,"sulfato_amonio":1.6,"map_monoamonico":80.0,"picloran":0.12,"mesotrione_48":0.3,"urea_azufrada_38_4_protegida":180.0,"s_metalacloro":1.3},"ord":5},"l07":{"nombre":"Don Bonifacio Maíz","has":37,"cultivo":"Maíz","dosis":{"power_plus":2.0,"atrazina_granulada_90":2.6,"ampligo_zariva":0.1,"aceite_ttm":0.2,"all_ok":0.6,"sulfato_amonio":1.6,"map_monoamonico":80.0,"picloran":0.12,"mesotrione_48":0.3,"urea_azufrada_38_4_protegida":180.0,"s_metalacloro":1.3},"ord":6},"l08":{"nombre":"Parra Soja","has":61,"cultivo":"Soja","dosis":{"glifosato_granulado_72":3.5,"aceite_ttm":0.6,"all_ok":0.3,"cletodim_24":1.0,"flumioxazin_48":0.12,"sulfato_amonio":2.0,"glufosinato_amonio_20":4.0,"sulfentrazone_50":0.45,"heat_adjeva":0.035,"2_4_d_enlist":3.0,"ariette":0.2,"s_metalacloro":1.0,"funcion_pack":0.023},"ord":7},"l09":{"nombre":"Moreno Quintas soja","has":57,"cultivo":"Soja","dosis":{"glifosato_granulado_72":3.5,"aceite_ttm":0.6,"all_ok":0.3,"cletodim_24":1.0,"flumioxazin_48":0.12,"sulfato_amonio":2.0,"glufosinato_amonio_20":4.0,"sulfentrazone_50":0.45,"heat_adjeva":0.035,"2_4_d_enlist":3.0,"ariette":0.2,"s_metalacloro":1.0,"funcion_pack":0.023},"ord":8},"l10":{"nombre":"Cuenca Girasol","has":30,"cultivo":"Girasol","dosis":{"glifosato_granulado_72":3.0,"2_4_d_micro_emulsion_30":2.5,"ampligo_zariva":0.1,"sttager":0.15,"aceite_ttm":0.2,"cletodim_24":0.5,"elevore":0.12,"sulfato_amonio":1.6,"sulfentrazone_50":0.3,"s_metalacloro":1.0,"lambda_al_25":0.05,"girasol_syn_397_o_nk_3969_180_000_semillas":0.32},"ord":9},"l11":{"nombre":"Zabala Maíz","has":7,"cultivo":"Maíz","dosis":{"power_plus":2.0,"atrazina_granulada_90":2.6,"ampligo_zariva":0.1,"aceite_ttm":0.2,"all_ok":0.6,"sulfato_amonio":1.6,"map_monoamonico":80.0,"picloran":0.12,"mesotrione_48":0.3,"urea_azufrada_38_4_protegida":180.0,"s_metalacloro":1.3},"ord":10},"l12":{"nombre":"Quinta","has":7,"cultivo":"Soja","dosis":{"glifosato_granulado_72":3.5,"aceite_ttm":0.6,"all_ok":0.3,"cletodim_24":1.0,"flumioxazin_48":0.12,"sulfato_amonio":2.0,"glufosinato_amonio_20":4.0,"sulfentrazone_50":0.45,"heat_adjeva":0.035,"2_4_d_enlist":3.0,"ariette":0.2,"s_metalacloro":1.0,"funcion_pack":0.023},"ord":11}},"dosisCultivo":{"power_plus":{"dosis":{"Maíz":2,"Sorgo":6},"obs":""},"glifosato_granulado_72":{"dosis":{"Girasol":3,"Soja":3.5},"obs":"Girasol: 3 en Zababal/Olgado/Cuadrado, 1,5 en Brambilla. Soja: 7,5 (Manasse) / 3,5 (Moreno Q.) / 3 (Cuenca) — se tomó valor intermedio."},"atrazina_granulada_90":{"dosis":{"Maíz":2.6,"Sorgo":2},"obs":""},"paraquat":{"dosis":{"Girasol":2},"obs":"Solo en Olgado y Cuadrado."},"2_4_d_micro_emulsion_30":{"dosis":{"Girasol":2.5,"Soja":2.5,"Sorgo":2.5},"obs":"Dosis para segundos golpes. En soja solo se usa en Manasse."},"ampligo_zariva":{"dosis":{"Girasol":0.1,"Maíz":0.1},"obs":""},"sttager":{"dosis":{"Girasol":0.15},"obs":""},"aceite_ttm":{"dosis":{"Girasol":0.4,"Soja":0.4,"Maíz":0.2},"obs":"Girasol: 0,2 en Zababal. Soja: 0,6 en Moreno Quintas."},"all_ok":{"dosis":{"Soja":0.3,"Maíz":0.6},"obs":"En soja solo se usa en Moreno Quintas."},"cletodim_24":{"dosis":{"Girasol":0.5,"Soja":0.7},"obs":"Soja: 1,0 en Moreno Quintas."},"flumioxazin_48":{"dosis":{"Soja":0.15},"obs":"0,15 en Manasse y 0,12 en Moreno Quintas; sin uso en Cuenca."},"clearsol_pack_6_has":{"dosis":{"Girasol":0.16,"Sorgo":0.16},"obs":"Pack cada 6 has. Sin Clearsol en Zababal (puede ir a verdeo). En sorgo, solo variedad CL."},"elevore":{"dosis":{"Girasol":0.12},"obs":"Media dosis, para rama negra en rastrojo de maíz de 1°."},"sulfato_amonio":{"dosis":{"Girasol":1.6,"Soja":2,"Maíz":1.6,"Sorgo":2},"obs":""},"glufosinato_amonio_20":{"dosis":{"Soja":1.5},"obs":"4,0 en Moreno Quintas (doble golpe + cierre de surco)."},"sulfentrazone_50":{"dosis":{"Girasol":0.3,"Soja":0.45},"obs":"Girasol: 0,2 en Brambilla."},"map_monoamonico":{"dosis":{"Maíz":80},"obs":""},"heat_adjeva":{"dosis":{"Soja":0.035},"obs":""},"picloran":{"dosis":{"Maíz":0.12,"Sorgo":0.13},"obs":"Usar con glifosatos granulados; con sulfosato puede precipitar."},"2_4_d_enlist":{"dosis":{"Soja":1.5},"obs":"3,0 en Moreno Quintas."},"mesotrione_48":{"dosis":{"Maíz":0.3},"obs":""},"urea_azufrada_38_4_protegida":{"dosis":{"Maíz":180},"obs":"180 kg/ha de urea azufrada (37 % N y 4 % S)."},"ariette":{"dosis":{"Soja":0.2},"obs":""},"s_metalacloro":{"dosis":{"Girasol":1,"Soja":1,"Maíz":1.3},"obs":""},"funcion_pack":{"dosis":{"Soja":0.023},"obs":"Curado e inoculado de soja: 1 caja cada 3.000 kg de semilla, calculado sobre 70 kg/ha."},"piroxasulfone_48":{"dosis":{"Girasol":0.3},"obs":"Solo en Brambilla."},"lambda_al_25":{"dosis":{"Girasol":0.05},"obs":""},"sorgo_forrajero_advanta_2650_ig":{"dosis":{"Sorgo":0.65},"obs":"13 kg/ha en bolsas de 20 kg."},"girasol_syn_397_o_nk_3969_180_000_semillas":{"dosis":{"Girasol":0.32},"obs":"Semilla de girasol — bolsa de 180 mil semillas. Usada en Zababal y Brambilla."},"girasol_brevant_brv4225_cl_g1_150_000_semillas":{"dosis":{"Girasol":0.32},"obs":"Semilla de girasol CL — usada en Olgado y Cuadrado. Alternativa a la anterior: va una u otra, no las dos."}},"cultivos":["Girasol","Soja","Maíz","Sorgo"],"campanas":["2025/2026","2026/2027"],"campBase":"2025/2026","campActual":"2026/2027","tc":1490.5,"stock":{},"comentarios":"Puede llegar a faltar algún insecticida y fungicida para soja, que se va viendo según cómo se presente el año.\nNo puse híbridos de maíz, hay muchos para diferentes situaciones.","campania":"2026-27"};
+let insSub = "lotes";
+let insFil = {cat:"", q:"", todos:false};
+let insLoteAbierto = null;
+let insTodosLista = false;
+
+function insD(){ if(!S.ins || !S.ins.insumos) S.ins = JSON.parse(JSON.stringify(INS_SEED)); return S.ins; }
+function insId(nombre){
+  return String(nombre).normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"");
+}
+function insLista(){ const d=insD(); return Object.values(d.insumos).sort((a,b)=>(a.ord||0)-(b.ord||0) || String(a.nombre).localeCompare(String(b.nombre),"es")); }
+function insLotes(){ const d=insD(); return Object.entries(d.lotes||{}).map(([id,l])=>Object.assign({id},l)).sort((a,b)=>(a.ord||0)-(b.ord||0)); }
+function insNom(id){ const d=insD(); return d.insumos[id] ? d.insumos[id].nombre : id; }
+function insUni(id){ const d=insD(); return d.insumos[id] ? (d.insumos[id].unidad||"") : ""; }
+function insPrecio(id, camp){
+  const d=insD(); const it=d.insumos[id]; if(!it||!it.precios) return null;
+  const v=it.precios[camp]; if(v===undefined||v===null||v==="") return null;
+  const n=num(v); return n>0? n : null;
+}
+/* IVA: fertilizantes 10,5 %, el resto 21 % (se puede fijar por producto en Precios por campaña) */
+function insIva(i){
+  if(i && i.iva!==undefined && i.iva!=="" && num(i.iva)>=0 && String(i.iva).trim()!=="") return num(i.iva);
+  return norm((i&&i.categoria)||"").startsWith("fertil") ? 10.5 : 21;
+}
+function insTotales(){   // cantidad total por insumo sumando todos los lotes
+  const t={};
+  insLotes().forEach(l=>{ const has=num(l.has); for(const id in (l.dosis||{})){ const dd=num(l.dosis[id]); if(dd>0&&has>0) t[id]=(t[id]||0)+dd*has; } });
+  return t;
+}
+function insCats(){
+  const s=new Set(["Herbicida","Insecticida","Fungicida","Fertilizante","Semilla","Coadyuvante","Coadyuvante/Compatibilizador","Antideriva","Almacenaje"]);
+  insLista().forEach(i=>{ if(i.categoria) s.add(i.categoria); });
+  return [...s].sort((a,b)=>a.localeCompare(b,"es"));
+}
+function insFm(n,dec){ return (n||0).toLocaleString("es-AR",{minimumFractionDigits:dec===undefined?2:dec, maximumFractionDigits:dec===undefined?2:dec}); }
+function insFmQ(n){ return (Math.round((n||0)*1000)/1000).toLocaleString("es-AR",{maximumFractionDigits:3}); }
+function insOpts(lista, sel, vacio){
+  return (vacio!==undefined? `<option value="">${vacio}</option>`:"") + lista.map(v=>`<option value="${ppH(v)}" ${v===sel?"selected":""}>${ppH(v)}</option>`).join("");
+}
+function insSet(ruta, val){ // asigna un valor por ruta "a/b/c" dentro de S.ins y guarda
+  const p=ruta.split("/"); let o=insD();
+  for(let i=0;i<p.length-1;i++){ if(typeof o[p[i]]!=="object"||o[p[i]]===null) o[p[i]]={}; o=o[p[i]]; }
+  if(val===""||val===null||val===undefined) delete o[p[p.length-1]]; else o[p[p.length-1]]=val;
+  guardar();
+}
+
+/* ---------- navegación interna ---------- */
+function insVer(sub){
+  insSub = sub;
+  document.querySelectorAll("#vInsumos .subnav button").forEach(b=>b.classList.toggle("activo", b.dataset.s===sub));
+  insRender();
+}
+function insRender(){
+  if(!document.getElementById("vInsumos")) return;
+  insD();
+  const cont = document.getElementById("insCuerpo");
+  if(insSub==="lotes") cont.innerHTML = insHtmlLotes();
+  else if(insSub==="dosis") cont.innerHTML = insHtmlDosis();
+  else if(insSub==="lista") cont.innerHTML = insHtmlLista();
+  else cont.innerHTML = insHtmlPrecios();
+}
+
+/* ============================================================
+   1) POR LOTE
+   ============================================================ */
+function insHtmlLotes(){
+  const d=insD(), lotes=insLotes(), tot=insTotales();
+  const hasTot = lotes.reduce((a,l)=>a+num(l.has),0);
+  let h = `<div class="tarjeta">
+    <h3 class="tit">🌾 Lotes campaña ${ppH(d.campania||"")} (${lotes.length}) · ${insFmQ(hasTot)} has</h3>
+    <p class="sub" style="margin-bottom:8px">Cada lote con sus has, cultivo y los insumos con su dosis por ha. La cantidad total (dosis × has) alimenta la <b>Lista de campaña</b>.</p>
+    <div class="fila3">
+      <div class="campo-form"><label>Nuevo lote</label><input type="text" id="ins_lnom" placeholder="Ej: Zabala Girasol"></div>
+      <div class="campo-form"><label>Has</label><input type="text" inputmode="decimal" id="ins_lhas" placeholder="0"></div>
+      <div class="campo-form"><label>Cultivo</label><select id="ins_lcul">${insOpts(d.cultivos||[], "Soja")}</select></div>
+    </div>
+    <div class="fila-botones"><button class="btn peq" onclick="insLoteNuevo()">＋ Agregar lote</button></div>
+  </div>`;
+  lotes.forEach(l=>{
+    const abierto = insLoteAbierto===l.id;
+    const ids = Object.keys(l.dosis||{}).filter(id=>num(l.dosis[id])>0);
+    h += `<div class="tarjeta" style="padding:12px 14px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn peq gris" style="padding:6px 10px" onclick="insLoteAbierto=${abierto?"null":"'"+l.id+"'"};insRender()">${abierto?"▾":"▸"}</button>
+        <input type="text" value="${ppH(l.nombre||"")}" style="flex:2;min-width:150px;font-weight:700" onchange="insSet('lotes/${l.id}/nombre',this.value);insRender()">
+        <input type="text" inputmode="decimal" value="${ppH(l.has||"")}" placeholder="has" style="width:90px" onchange="insSet('lotes/${l.id}/has',num(this.value));insRender()">
+        <select style="width:120px" onchange="insSet('lotes/${l.id}/cultivo',this.value);insRender()">${insOpts(d.cultivos||[], l.cultivo)}</select>
+        <span style="font-size:12px;color:var(--gris)">${ids.length} insumos</span>
+        <button class="pp-ico" onclick="insLoteBorrar('${l.id}')" title="Borrar lote">🗑️</button>
+      </div>`;
+    if(abierto){
+      const libres = insLista().filter(i=>!(l.dosis&&num(l.dosis[i.id||insId(i.nombre)])>0));
+      h += `<div class="pp-scroll" style="margin-top:10px"><table class="pp-tab">
+        <thead><tr><th>Insumo</th><th style="text-align:right">Dosis / ha</th><th>Unid.</th><th style="text-align:right">Total (${insFmQ(num(l.has))} has)</th><th></th></tr></thead><tbody>`;
+      insLista().filter(i=>ids.includes(insKey(i))).forEach(i=>{
+        const id=insKey(i), dd=num(l.dosis[id]);
+        h += `<tr><td>${ppH(i.nombre)}</td>
+          <td style="text-align:right"><input type="text" inputmode="decimal" value="${dd}" style="width:80px;text-align:right;padding:6px" onchange="insSet('lotes/${l.id}/dosis/${id}',num(this.value)||'');insRender()"></td>
+          <td>${ppH(i.unidad||"")}</td>
+          <td style="text-align:right"><b>${insFmQ(dd*num(l.has))}</b></td>
+          <td><button class="pp-ico" onclick="insSet('lotes/${l.id}/dosis/${id}','');insRender()">✕</button></td></tr>`;
+      });
+      h += `</tbody></table></div>
+        <div class="fila-botones" style="align-items:center">
+          <select style="flex:1;min-width:200px" onchange="if(this.value){insSet('lotes/${l.id}/dosis/'+this.value,1);insRender();}">${insOpts([], "", "— Agregar insumo al lote —")}${libres.map(i=>`<option value="${insKey(i)}">${ppH(i.nombre)}</option>`).join("")}</select>
+          <button class="btn peq linea" onclick="insLoteDesdeCultivo('${l.id}')">⬇ Cargar dosis de ${ppH(l.cultivo||"cultivo")}</button>
+        </div>`;
+    }
+    h += `</div>`;
+  });
+  // totales por insumo
+  const idsTot = Object.keys(tot).filter(id=>tot[id]>0).sort((a,b)=>insNom(a).localeCompare(insNom(b),"es"));
+  h += `<div class="tarjeta"><h3 class="tit">Σ Cantidad total por insumo (todos los lotes)</h3>
+    <div class="pp-scroll"><table class="pp-tab"><thead><tr><th>Insumo</th><th>Unid.</th><th style="text-align:right">Cantidad</th><th>Lotes</th></tr></thead><tbody>`;
+  idsTot.forEach(id=>{
+    const en = lotes.filter(l=>num((l.dosis||{})[id])>0 && num(l.has)>0).map(l=>l.nombre).join(", ");
+    h += `<tr><td>${ppH(insNom(id))}</td><td>${ppH(insUni(id))}</td><td style="text-align:right"><b>${insFmQ(tot[id])}</b></td><td style="font-size:11px;color:var(--gris)">${ppH(en)}</td></tr>`;
+  });
+  h += `</tbody></table></div></div>`;
+  return h;
+}
+function insKey(i){ return i.id || insIdDe(i); }
+function insIdDe(i){ const d=insD(); for(const k in d.insumos) if(d.insumos[k]===i) return k; return insId(i.nombre); }
+function insLoteNuevo(){
+  const nom=(document.getElementById("ins_lnom").value||"").trim(); if(!nom){ toast("Poné el nombre del lote"); return; }
+  const d=insD(); const id="l"+Date.now().toString(36);
+  const ord = insLotes().length;
+  d.lotes[id] = {nombre:nom, has:num(document.getElementById("ins_lhas").value), cultivo:document.getElementById("ins_lcul").value||"", dosis:{}, ord};
+  guardar(); insLoteAbierto=id; insRender(); toast("✔ Lote agregado");
+}
+function insLoteBorrar(id){
+  const l=insD().lotes[id]; if(!l) return;
+  if(!confirm("¿Borrar el lote \""+(l.nombre||"")+"\" con sus dosis?")) return;
+  delete insD().lotes[id]; guardar(); insRender();
+}
+function insLoteDesdeCultivo(id){
+  const d=insD(), l=d.lotes[id]; if(!l) return;
+  const cul=l.cultivo; if(!cul){ toast("Elegí primero el cultivo del lote"); return; }
+  const n = Object.keys(d.dosisCultivo||{}).filter(k=>num(((d.dosisCultivo[k]||{}).dosis||{})[cul])>0).length;
+  if(!n){ toast("No hay dosis cargadas para "+cul+" en Dosis por cultivo"); return; }
+  if(!confirm("Cargar en \""+l.nombre+"\" las "+n+" dosis estándar de "+cul+" (de la pestaña Dosis por cultivo)?\nSe pisan las dosis de esos insumos; los demás quedan.")) return;
+  l.dosis = l.dosis||{};
+  for(const k in d.dosisCultivo){ const v=num(((d.dosisCultivo[k]||{}).dosis||{})[cul]); if(v>0) l.dosis[k]=v; }
+  guardar(); insRender(); toast("✔ Dosis de "+cul+" cargadas");
+}
+
+/* ============================================================
+   2) DOSIS POR CULTIVO
+   ============================================================ */
+let insDosCul = "", insDosHas = "";
+function insHtmlDosis(){
+  const d=insD(), culs=d.cultivos||[];
+  if(!insDosCul) insDosCul = culs[0]||"";
+  const has=num(insDosHas);
+  // filas: insumos en dosisCultivo o usados en algún lote
+  const usados = new Set(Object.keys(d.dosisCultivo||{}));
+  insLotes().forEach(l=>Object.keys(l.dosis||{}).forEach(k=>{ if(num(l.dosis[k])>0) usados.add(k); }));
+  const filas = insLista().filter(i=>usados.has(insKey(i)));
+  const libres = insLista().filter(i=>!usados.has(insKey(i)));
+  let cnt=0;
+  let h = `<div class="tarjeta">
+    <h3 class="tit">🧪 Dosis por cultivo — campaña ${ppH(d.campania||"")}</h3>
+    <p class="sub" style="margin-bottom:8px">Dosis unitarias por hectárea (editables). Elegí un cultivo y las has para ver el total de cada insumo. Celda vacía = no se usa en ese cultivo.</p>
+    <div class="fila2">
+      <div class="campo-form"><label>Cultivo seleccionado</label><select onchange="insDosCul=this.value;insRender()">${insOpts(culs, insDosCul)}</select></div>
+      <div class="campo-form"><label>Hectáreas</label><input type="text" inputmode="decimal" value="${ppH(insDosHas)}" placeholder="0" onchange="insDosHas=this.value;insRender()"></div>
+    </div>
+    <div class="fila-botones">
+      <button class="btn peq linea" onclick="insDosisRecalcular()">↻ Recalcular promedios desde los lotes</button>
+      <select style="flex:1;min-width:200px" onchange="if(this.value){insSet('dosisCultivo/'+this.value+'/obs','');insRender();}">${insOpts([], "", "— Agregar insumo a la tabla —")}${libres.map(i=>`<option value="${insKey(i)}">${ppH(i.nombre)}</option>`).join("")}</select>
+      <input type="text" placeholder="Nuevo cultivo" id="ins_ncul" style="width:140px"><button class="btn peq gris" onclick="insCultivoNuevo()">＋ Cultivo</button>
+    </div>
+    <div class="pp-scroll"><table class="pp-tab"><thead><tr><th>Insumo</th><th>Unid.</th>${culs.map(c=>`<th style="text-align:right">${ppH(c)}</th>`).join("")}<th style="text-align:right;background:#1565c0">Dosis ${ppH(insDosCul)}</th><th style="text-align:right;background:#1565c0">Total ${insFmQ(has)} has</th><th>Observaciones / variantes por lote</th><th></th></tr></thead><tbody>`;
+  filas.forEach(i=>{
+    const id=insKey(i), dc=(d.dosisCultivo||{})[id]||{dosis:{},obs:""};
+    const ds=num((dc.dosis||{})[insDosCul]);
+    if(ds>0) cnt++;
+    h += `<tr><td style="font-weight:700">${ppH(i.nombre)}</td><td>${ppH(i.unidad||"")}</td>`;
+    culs.forEach(c=>{
+      const v=(dc.dosis||{})[c];
+      h += `<td style="text-align:right"><input type="text" inputmode="decimal" value="${v!==undefined&&v!==""?ppH(v):""}" style="width:70px;text-align:right;padding:5px;color:#0044cc" onchange="insSet('dosisCultivo/${id}/dosis/${ppH(c)}',num(this.value)||'');insRender()"></td>`;
+    });
+    h += `<td style="text-align:right;background:#eef4fb"><b>${ds>0?insFmQ(ds):""}</b></td>
+          <td style="text-align:right;background:#eef4fb"><b>${ds>0&&has>0?insFmQ(ds*has):""}</b></td>
+          <td><input type="text" value="${ppH(dc.obs||"")}" style="min-width:220px;font-size:12px;padding:5px" onchange="insSet('dosisCultivo/${id}/obs',this.value)"></td>
+          <td><button class="pp-ico" onclick="insDosisQuitar('${id}')" title="Sacar de la tabla">✕</button></td></tr>`;
+  });
+  h += `</tbody></table></div>
+    <div class="aviso">Insumos requeridos por ${ppH(insDosCul)}: <b>${cnt}</b>. Las dosis salen de la hoja "Por lote": cuando un cultivo tenía dosis distintas según el lote se tomó el promedio y la variante queda en Observaciones.</div>
+  </div>`;
+  return h;
+}
+function insDosisQuitar(id){
+  const d=insD(); if(!d.dosisCultivo||!d.dosisCultivo[id]) return;
+  if(!confirm("¿Sacar \""+insNom(id)+"\" de la tabla de dosis por cultivo?")) return;
+  delete d.dosisCultivo[id]; guardar(); insRender();
+}
+function insCultivoNuevo(){
+  const n=(document.getElementById("ins_ncul").value||"").trim(); if(!n) return;
+  const d=insD(); d.cultivos=d.cultivos||[];
+  if(d.cultivos.some(c=>norm(c)===norm(n))){ toast("Ese cultivo ya existe"); return; }
+  d.cultivos.push(n); guardar(); insRender(); toast("✔ Cultivo "+n+" agregado");
+}
+function insDosisRecalcular(){
+  const d=insD(), lotes=insLotes();
+  // promedio de las dosis > 0 de los lotes de cada cultivo (con o sin has)
+  const acc={};
+  lotes.forEach(l=>{ const c=l.cultivo; if(!c) return;
+    for(const id in (l.dosis||{})){ const v=num(l.dosis[id]); if(v>0){ acc[id]=acc[id]||{}; acc[id][c]=acc[id][c]||[]; acc[id][c].push(v); } } });
+  const n=Object.keys(acc).length;
+  if(!n){ toast("No hay dosis cargadas en los lotes"); return; }
+  if(!confirm("Recalcular la tabla con el PROMEDIO de las dosis de los lotes de cada cultivo ("+n+" insumos)?\nSe pisan las dosis de esas celdas; las observaciones y las celdas sin datos en lotes no se tocan.")) return;
+  d.dosisCultivo=d.dosisCultivo||{};
+  for(const id in acc){
+    d.dosisCultivo[id]=d.dosisCultivo[id]||{dosis:{},obs:""};
+    d.dosisCultivo[id].dosis=d.dosisCultivo[id].dosis||{};
+    for(const c in acc[id]){ const arr=acc[id][c]; d.dosisCultivo[id].dosis[c]=Math.round(arr.reduce((a,b)=>a+b,0)/arr.length*1000)/1000; }
+  }
+  guardar(); insRender(); toast("✔ Dosis promedio recalculadas");
+}
+
+/* ============================================================
+   3) LISTA DE CAMPAÑA (cantidad, stock, a comprar, precio, total)
+   ============================================================ */
+function insHtmlLista(){
+  const d=insD(), camp=d.campActual||(d.campanas||[]).slice(-1)[0]||"", tot=insTotales();
+  d.stock=d.stock||{};
+  const filas = insLista().filter(i=>{ const id=insKey(i); return insTodosLista || (tot[id]||0)>0 || num(d.stock[id])>0; });
+  let sSin=0, sIva=0;
+  const tc=num(d.tc);
+  let h = `<div class="tarjeta">
+    <h3 class="tit">📋 Insumos proyectados — campaña ${ppH(d.campania||"")}</h3>
+    <p class="sub" style="margin-bottom:8px">Cantidad = suma de los lotes. A comprar = cantidad − stock. Precio = el cargado en <b>Precios por campaña</b> para la campaña elegida (editable acá también).</p>
+    <div class="fila3">
+      <div class="campo-form"><label>Campaña de precios</label><select onchange="insSet('campActual',this.value);insRender()">${insOpts(d.campanas||[], camp)}</select></div>
+      <div class="campo-form"><label>Nombre de campaña</label><input type="text" value="${ppH(d.campania||"")}" onchange="insSet('campania',this.value);insRender()"></div>
+      <div class="campo-form"><label>Mostrar</label><select onchange="insTodosLista=this.value==='1';insRender()"><option value="0" ${!insTodosLista?"selected":""}>Solo con cantidad o stock</option><option value="1" ${insTodosLista?"selected":""}>Todos los insumos</option></select></div>
+    </div>
+    <div class="pp-scroll"><table class="pp-tab"><thead><tr><th>Producto</th><th style="text-align:right">Cantidad</th><th>Unid.</th><th style="text-align:right">Stock</th><th style="text-align:right">A comprar</th><th style="text-align:right">U$S/unid</th><th style="text-align:right">U$S total s/IVA</th><th style="text-align:right">IVA</th><th>Observación</th></tr></thead><tbody>`;
+  filas.forEach(i=>{
+    const id=insKey(i), cant=tot[id]||0, st=num(d.stock[id]), comprar=Math.max(0,cant-st), p=insPrecio(id,camp), t=p!==null? comprar*p : null;
+    const iva=insIva(i);
+    if(t!==null){ sSin+=t; sIva+=t*iva/100; }
+    h += `<tr><td style="font-weight:700">${ppH(i.nombre)}</td>
+      <td style="text-align:right">${cant>0?insFmQ(cant):"<span style='color:var(--gris)'>—</span>"}</td><td>${ppH(i.unidad||"")}</td>
+      <td style="text-align:right"><input type="text" inputmode="decimal" value="${st>0?st:""}" style="width:75px;text-align:right;padding:5px" onchange="insSet('stock/${id}',num(this.value)||'');insRender()"></td>
+      <td style="text-align:right"><b>${comprar>0?insFmQ(comprar):"—"}</b></td>
+      <td style="text-align:right"><input type="text" inputmode="decimal" value="${p!==null?p:""}" placeholder="—" style="width:80px;text-align:right;padding:5px;color:#0044cc" onchange="insSet('insumos/${id}/precios/${ppH(camp)}',num(this.value)||'');insRender()"></td>
+      <td style="text-align:right">${t!==null?"<b>US$ "+insFm(t)+"</b>":"<span style='color:var(--rojo);font-size:11px'>sin precio</span>"}</td>
+      <td style="text-align:right;font-size:11px;color:var(--gris)">${insFm(iva,1)}%</td>
+      <td><input type="text" value="${ppH(i.obs||"")}" style="min-width:200px;font-size:12px;padding:5px" onchange="insSet('insumos/${id}/obs',this.value)"></td></tr>`;
+  });
+  const sCon=sSin+sIva;
+  h += `</tbody></table></div>
+    <div class="fila3" style="margin-top:12px">
+      <div class="campo-form"><label>TC para pesificar ($/USD)</label><input type="text" inputmode="decimal" value="${tc>0?tc:""}" onchange="insSet('tc',num(this.value)||'');insRender()">
+        <div class="fila-botones" style="margin-top:6px"><button class="btn peq linea" onclick="insSet('tc',num(S.params.tcVenta)||'');insRender()">Usar TC mayorista venta</button><button class="btn peq linea" onclick="insSet('tc',num((S.presuTC||{}).venta)||'');insRender()">Usar dólar BNA</button></div></div>
+      <div style="flex:1;background:#eef4fb;border:1px solid var(--gris-cl);border-radius:10px;padding:10px">
+        <div style="font-size:10px;font-weight:800;color:var(--gris);text-transform:uppercase">Total sin IVA</div><div style="font-size:16px;font-weight:800">US$ ${insFm(sSin)}</div>
+        ${tc>0?`<div style="font-size:11px;color:var(--gris)">${fm(sSin*tc)}</div>`:""}</div>
+      <div style="flex:1;background:#eef4fb;border:1px solid var(--gris-cl);border-radius:10px;padding:10px">
+        <div style="font-size:10px;font-weight:800;color:var(--gris);text-transform:uppercase">Total con IVA</div><div style="font-size:16px;font-weight:800;color:var(--verde)">US$ ${insFm(sCon)}</div>
+        <div style="font-size:11px;color:var(--gris)">IVA US$ ${insFm(sIva)} (fertilizantes 10,5 %, resto 21 %)${tc>0?" · "+fm(sCon*tc):""}</div></div>
+    </div>
+    <div class="campo-form" style="margin-top:10px"><label>Comentarios</label><textarea rows="3" style="width:100%;padding:10px;border:1px solid var(--gris-cl);border-radius:10px;font-family:inherit;font-size:14px" onchange="insSet('comentarios',this.value)">${ppH(d.comentarios||"")}</textarea></div>
+  </div>`;
+  return h;
+}
+
+/* ============================================================
+   4) PRECIOS POR CAMPAÑA + VARIACIÓN
+   ============================================================ */
+function insVariacion(base, act){
+  const d=insD(), tot=insTotales(), det=[];
+  let sB=0,sA=0,cB=0,cA=0,sumVar=0,n=0,nC=0;
+  insLista().forEach(i=>{
+    const id=insKey(i), pb=insPrecio(id,base), pa=insPrecio(id,act);
+    if(pb===null||pa===null) return;
+    const v=(pa/pb-1)*100; n++; sumVar+=v; sB+=pb; sA+=pa;
+    const c=tot[id]||0; if(c>0){ nC++; cB+=c*pb; cA+=c*pa; }
+    det.push({id,nombre:i.nombre,pb,pa,v,cant:c});
+  });
+  return {n, nC, simple: n? sumVar/n : null, pondPrecio: sB>0? (sA/sB-1)*100 : null, pondCant: cB>0? (cA/cB-1)*100 : null, det};
+}
+function insHtmlPrecios(){
+  const d=insD(), camps=d.campanas||[];
+  const base=d.campBase||camps[0]||"", act=d.campActual||camps.slice(-1)[0]||"";
+  const v=insVariacion(base, act);
+  const pv = x => x===null? "—" : (x>=0?"+":"")+insFm(x)+"%";
+  const col = x => x===null? "var(--gris)" : x>0? "var(--rojo)" : x<0? "var(--verde-ok)" : "var(--tinta)";
+  let h = `<div class="tarjeta">
+    <h3 class="tit">📈 Variación de precios entre campañas</h3>
+    <div class="fila2">
+      <div class="campo-form"><label>Campaña base</label><select onchange="insSet('campBase',this.value);insRender()">${insOpts(camps, base)}</select></div>
+      <div class="campo-form"><label>Campaña actual</label><select onchange="insSet('campActual',this.value);insRender()">${insOpts(camps, act)}</select></div>
+    </div>
+    <p class="sub" style="margin-bottom:8px">Calculada solo con los <b>${v.n}</b> productos que tienen precio en las dos campañas${v.n?"":" (todavía ninguno)"}.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${[["Promedio simple",v.simple,"Promedio de la variación de cada producto (todos pesan igual).","simple"],
+         ["Ponderado por cantidad",v.pondCant,"Pesa cada producto por la cantidad que usás esta campaña ("+v.nC+" productos con cantidad). Es el que mejor refleja el aumento real de tus gastos.","pondCant"],
+         ["Ponderado por precio",v.pondPrecio,"Suma de precios actuales sobre suma de precios base.","pondPrecio"]].map(([t,x,e,k])=>`
+      <div style="flex:1;min-width:200px;background:#f4f8fd;border:1px solid var(--gris-cl);border-radius:10px;padding:10px">
+        <div style="font-size:10px;font-weight:800;color:var(--gris);text-transform:uppercase">${t}</div>
+        <div style="font-size:20px;font-weight:800;color:${col(x)}">${pv(x)}</div>
+        <div style="font-size:11px;color:var(--gris);margin:2px 0 6px">${e}</div>
+        <button class="btn peq linea" ${x===null?"disabled":""} onclick="insUsarVariacion('${k}')">Usar en Parámetros</button></div>`).join("")}
+    </div>
+    ${num(S.params.varInsumos)||S.params.varInsumos===0? `<div class="aviso">En Parámetros está cargado: <b>${pv(num(S.params.varInsumos))}</b> (${ppH(S.params.varInsumosNota||"")}).</div>`:""}
+    <div class="fila-botones" style="align-items:center;margin-top:10px">
+      <input type="text" id="ins_ncamp" placeholder="Nueva campaña (ej: 2027/2028)" style="flex:1;min-width:180px"><button class="btn peq" onclick="insCampNueva()">＋ Agregar campaña</button>
+    </div>
+  </div>`;
+  // tabla
+  const cats=insCats();
+  const filas=insLista().filter(i=>{
+    if(insFil.cat && norm(i.categoria||"")!==norm(insFil.cat)) return false;
+    if(insFil.q && !norm(i.nombre+" "+(i.categoria||"")).includes(norm(insFil.q))) return false;
+    return true;
+  });
+  h += `<div class="tarjeta">
+    <h3 class="tit">💲 Precios de insumos por campaña (U$S/unidad sin IVA) · ${filas.length}</h3>
+    <p class="sub" style="margin-bottom:8px">IVA: fertilizantes 10,5 %, el resto 21 % (según la categoría). Si un producto tiene otra alícuota, cargala en su columna IVA %.</p>
+    <div class="fila3">
+      <div class="campo-form"><label>Buscar</label><input type="text" value="${ppH(insFil.q)}" placeholder="producto…" onchange="insFil.q=this.value;insRender()"></div>
+      <div class="campo-form"><label>Categoría</label><select onchange="insFil.cat=this.value;insRender()">${insOpts(cats, insFil.cat, "Todas")}</select></div>
+      <div class="campo-form"><label>&nbsp;</label><button class="btn peq gris" style="width:100%" onclick="insFil={cat:'',q:'',todos:false};insRender()">Limpiar</button></div>
+    </div>
+    <div class="fila3" style="background:#f4f8fd;border:1px dashed var(--gris-cl);border-radius:10px;padding:10px;margin-bottom:10px">
+      <div class="campo-form" style="margin:0"><label>Nuevo producto</label><input type="text" id="ins_pnom" placeholder="Nombre"></div>
+      <div class="campo-form" style="margin:0"><label>Categoría</label><input type="text" id="ins_pcat" list="insCatList" placeholder="Herbicida…"><datalist id="insCatList">${cats.map(c=>`<option value="${ppH(c)}">`).join("")}</datalist></div>
+      <div class="campo-form" style="margin:0"><label>Unidad</label><input type="text" id="ins_puni" list="insUniList" placeholder="Lts / Kgs / Bolsa"><datalist id="insUniList">${["Lts","Kgs","Bolsa","Grs","Tn","BB","Unidad","pack","caja"].map(u=>`<option value="${u}">`).join("")}</datalist>
+        <button class="btn peq" style="margin-top:6px;width:100%" onclick="insProdNuevo()">＋ Agregar producto</button></div>
+    </div>
+    <div class="pp-scroll"><table class="pp-tab"><thead><tr><th>Categoría</th><th>Producto</th><th>Unid.</th>${camps.map(c=>`<th style="text-align:right">${ppH(c)}</th>`).join("")}<th style="text-align:right">Var. ${ppH(base)}→${ppH(act)}</th><th style="text-align:right">IVA %</th><th>Obs.</th><th></th></tr></thead><tbody>`;
+  filas.forEach(i=>{
+    const id=insKey(i), pb=insPrecio(id,base), pa=insPrecio(id,act);
+    const vv = (pb!==null&&pa!==null)? (pa/pb-1)*100 : null;
+    h += `<tr><td><input type="text" value="${ppH(i.categoria||"")}" list="insCatList" style="width:120px;font-size:12px;padding:5px" onchange="insSet('insumos/${id}/categoria',this.value);insRender()"></td>
+      <td><input type="text" value="${ppH(i.nombre)}" style="min-width:220px;font-weight:700;padding:5px" onchange="insSet('insumos/${id}/nombre',this.value);insRender()"></td>
+      <td><input type="text" value="${ppH(i.unidad||"")}" list="insUniList" style="width:70px;font-size:12px;padding:5px" onchange="insSet('insumos/${id}/unidad',this.value)"></td>`;
+    camps.forEach(c=>{ const p=insPrecio(id,c);
+      h += `<td style="text-align:right"><input type="text" inputmode="decimal" value="${p!==null?p:""}" style="width:80px;text-align:right;padding:5px;color:#0044cc" onchange="insSet('insumos/${id}/precios/${ppH(c)}',num(this.value)||'');insRender()"></td>`; });
+    h += `<td style="text-align:right;font-weight:800;color:${col(vv)}">${pv(vv)}</td>
+      <td style="text-align:right"><input type="text" inputmode="decimal" value="${i.iva!==undefined&&i.iva!==""?ppH(i.iva):""}" placeholder="${insFm(insIva(i),1)}" title="Vacío = según categoría (fertilizante 10,5 %, resto 21 %)" style="width:60px;text-align:right;padding:5px;font-size:12px" onchange="insSet('insumos/${id}/iva',this.value.trim()===''?'':num(this.value));insRender()"></td>
+      <td><input type="text" value="${ppH(i.obs||"")}" style="min-width:160px;font-size:12px;padding:5px" onchange="insSet('insumos/${id}/obs',this.value)"></td>
+      <td><button class="pp-ico" onclick="insProdBorrar('${id}')" title="Borrar producto">🗑️</button></td></tr>`;
+  });
+  h += `</tbody></table></div></div>`;
+  return h;
+}
+function insCampNueva(){
+  const n=(document.getElementById("ins_ncamp").value||"").trim(); if(!n) return;
+  const d=insD(); d.campanas=d.campanas||[];
+  if(d.campanas.includes(n)){ toast("Esa campaña ya existe"); return; }
+  d.campanas.push(n); d.campBase=d.campActual||d.campanas[d.campanas.length-2]||n; d.campActual=n;
+  guardar(); insRender(); toast("✔ Campaña "+n+" agregada: cargá los precios nuevos en su columna");
+}
+function insProdNuevo(){
+  const nom=(document.getElementById("ins_pnom").value||"").trim(); if(!nom){ toast("Poné el nombre del producto"); return; }
+  const d=insD(); let id=insId(nom);
+  if(d.insumos[id]){ toast("Ese producto ya existe"); return; }
+  const ord = insLista().length;
+  d.insumos[id]={nombre:nom, categoria:(document.getElementById("ins_pcat").value||"").trim(), unidad:(document.getElementById("ins_puni").value||"").trim(), obs:"", precios:{}, ord};
+  guardar(); insRender(); toast("✔ Producto agregado");
+}
+function insProdBorrar(id){
+  const d=insD(), i=d.insumos[id]; if(!i) return;
+  const usos = insLotes().filter(l=>num((l.dosis||{})[id])>0).length;
+  if(!confirm("¿Borrar \""+i.nombre+"\" de la lista de insumos?"+(usos?"\n\nOJO: está cargado en "+usos+" lote(s); se quita también de ahí.":""))) return;
+  delete d.insumos[id];
+  insLotes().forEach(l=>{ if(l.dosis&&l.dosis[id]!==undefined) delete d.lotes[l.id].dosis[id]; });
+  if(d.dosisCultivo&&d.dosisCultivo[id]) delete d.dosisCultivo[id];
+  if(d.stock&&d.stock[id]!==undefined) delete d.stock[id];
+  guardar(); insRender();
+}
+function insUsarVariacion(k){
+  const d=insD(), v=insVariacion(d.campBase, d.campActual);
+  const val = v[k]; if(val===null||val===undefined) return;
+  const nom = k==="simple"?"promedio simple":k==="pondCant"?"ponderado por cantidad":"ponderado por precio";
+  S.params.varInsumos = String(Math.round(val*100)/100);
+  S.params.varInsumosNota = nom+" "+d.campBase+"→"+d.campActual+", "+v.n+" productos, "+HOY();
+  guardar(); insRender(); pintarVarInsumos();
+  toast("✔ Variación "+(val>=0?"+":"")+insFm(val)+"% cargada en Parámetros");
+}
+
+/* ============================================================
+   PARÁMETROS: aumento proyectado de gastos por insumos
+   ============================================================ */
+function pintarVarInsumos(){
+  const el=document.getElementById("varInsumosCard"); if(!el) return;
+  const v=num(S.params.varInsumos), p=num(S.params.partInsumos);
+  const aum = v*p/100;   // % de aumento del total de gastos
+  let filas="";
+  Object.keys(S.params.cultivos||{}).forEach(c=>{
+    const cc=S.params.cultivos[c];
+    const nCon=num(cc.pctCon)*(1+aum/100), nSin=num(cc.pctSin)*(1+aum/100);
+    filas += `<tr><td style="font-weight:700">${ppH(c)}</td><td style="text-align:right">${insFm(num(cc.pctCon))}%</td><td style="text-align:right;font-weight:800;color:var(--verde)">${insFm(nCon)}%</td><td style="text-align:right">${insFm(num(cc.pctSin))}%</td><td style="text-align:right;font-weight:800;color:var(--verde)">${insFm(nSin)}%</td></tr>`;
+  });
+  el.innerHTML = `<h3 class="tit">📈 Aumento proyectado de gastos por insumos</h3>
+    <p class="sub" style="margin-bottom:8px">La variación viene de la pestaña <b>Insumos → Precios por campaña</b>. Indicá qué parte del total de gastos son insumos y se proyecta el aumento de los % de gastos de cada cultivo.</p>
+    <div class="fila2">
+      <div class="campo-form"><label>Variación de precios de insumos (%)</label>
+        <input type="text" inputmode="decimal" value="${S.params.varInsumos!==undefined&&S.params.varInsumos!==""?ppH(S.params.varInsumos):""}" onchange="S.params.varInsumos=this.value;S.params.varInsumosNota='cargado a mano '+HOY();guardar();pintarVarInsumos()">
+        <div class="nota-fecha">${ppH(S.params.varInsumosNota||"sin cargar")}</div></div>
+      <div class="campo-form"><label>Participación de los insumos en el total de gastos (%)</label>
+        <input type="text" inputmode="decimal" value="${S.params.partInsumos!==undefined?ppH(S.params.partInsumos):""}" placeholder="Ej: 45" onchange="S.params.partInsumos=this.value;guardar();pintarVarInsumos()">
+        <div class="nota-fecha">Ej.: si los insumos son el 45% de los gastos y subieron 3,7%, el total de gastos sube 1,67%.</div></div>
+    </div>
+    <div class="balance" style="padding:10px;border-radius:10px;margin-bottom:10px">
+      <div style="font-size:11px;font-weight:800;color:var(--gris);text-transform:uppercase">Aumento proyectado del total de gastos</div>
+      <div style="font-size:22px;font-weight:800;color:${aum>0?"var(--rojo)":aum<0?"var(--verde-ok)":"var(--tinta)"}">${(aum>=0?"+":"")+insFm(aum)}%</div>
+      <div style="font-size:11px;color:var(--gris)">${insFm(v)}% × ${insFm(p)}% ÷ 100</div>
+    </div>
+    <div class="pp-scroll"><table class="pp-tab"><thead><tr><th>Cultivo</th><th style="text-align:right">% CON actual</th><th style="text-align:right">→ proyectado</th><th style="text-align:right">% SIN actual</th><th style="text-align:right">→ proyectado</th></tr></thead><tbody>${filas}</tbody></table></div>
+    <div class="fila-botones"><button class="btn peq sec" ${aum?"":"disabled"} onclick="aplicarVarInsumos()">✔ Aplicar el aumento a los % de gastos</button></div>
+    <div class="aviso">Al aplicar, cada % de gastos se multiplica por (1 + aumento) y queda como nuevo parámetro para el simulador. Se pide confirmación y se actualiza en todos los teléfonos.</div>`;
+}
+function aplicarVarInsumos(){
+  const v=num(S.params.varInsumos), p=num(S.params.partInsumos), aum=v*p/100;
+  if(!aum){ toast("Cargá la variación y la participación primero"); return; }
+  const culs=Object.keys(S.params.cultivos||{});
+  if(!confirm("Aplicar un aumento de "+insFm(aum)+"% a los % de gastos de "+culs.length+" cultivos?\n\nEj.: "+(culs[0]||"")+" CON "+insFm(num((S.params.cultivos[culs[0]]||{}).pctCon))+"% → "+insFm(num((S.params.cultivos[culs[0]]||{}).pctCon)*(1+aum/100))+"%\n\nSe actualiza en todos los teléfonos. ¿Confirmás?")) return;
+  culs.forEach(c=>{ const cc=S.params.cultivos[c];
+    cc.pctCon=String(Math.round(num(cc.pctCon)*(1+aum/100)*100)/100);
+    cc.pctSin=String(Math.round(num(cc.pctSin)*(1+aum/100)*100)/100); });
+  S.params.varInsumosAplicado = "+"+insFm(aum)+"% aplicado el "+HOY();
+  guardar(); pintarCultivosParam(); pintarVarInsumos(); calc();
+  toast("✔ % de gastos actualizados con el aumento de insumos");
 }
 
 /* ============================================================
