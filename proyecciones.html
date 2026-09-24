@@ -1209,7 +1209,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 29;   // subir este número en cada actualización del archivo
+const VERSION_APP = 30;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -2366,15 +2366,22 @@ function cmpHtmlSens(){
   const has = num(c.has);
   const cc = S.params.cultivos[c.cultivo]||{};
   const ref = agriCalcPuro(c.cultivo, has||1, rindes[0]||0, qqs[0]||0);
+  const modo = c.modo||"matriz";
   let h = `<div class="tarjeta">
     <h3 class="tit">📐 Comparativo rinde × arrendamiento</h3>
-    <p class="sub" style="margin-bottom:8px">Cargá un rango de rindes y un rango de arrendamientos: la tabla muestra el margen de cada combinación. Usa el precio del cereal, los % de gastos, la comercialización y el precio de ${esSoja?"soja":"novillo"} que están cargados en el Simulador y en Parámetros.</p>
+    <p class="sub" style="margin-bottom:8px">Usa el precio del cereal, los % de gastos, la comercialización y el precio de ${esSoja?"soja":"novillo"} que están cargados en el Simulador y en Parámetros.</p>
     <div class="fila3">
       <div class="campo-form"><label>Cultivo</label><select onchange="cmpSet(S.cmp,'cultivo',this.value)">${insOpts(culs, c.cultivo)}</select></div>
       <div class="campo-form"><label>Has</label><input type="text" inputmode="decimal" value="${ppH(c.has)}" onchange="cmpSet(S.cmp,'has',this.value)"></div>
       <div class="campo-form"><label>Arrendamiento en</label><select onchange="S.arrTipo=this.value;guardar();pintarArr();cmpRender()"><option value="SOJA_QQ" ${esSoja?"selected":""}>qq de soja / ha</option><option value="NOVILLO_KG" ${!esSoja?"selected":""}>kg de novillo / ha</option></select></div>
     </div>
-    <div class="fila3">
+    <div class="campo-form"><label>Qué comparar</label>
+      <select onchange="cmpSet(S.cmp,'modo',this.value)">
+        <option value="escalera" ${modo==="escalera"?"selected":""}>Escalera: a cada tramo de rinde le corresponde un arrendamiento distinto (los tramos del Precontrato)</option>
+        <option value="matriz" ${modo==="matriz"?"selected":""}>Tabla cruzada: todos los rindes contra todos los arrendamientos</option>
+      </select></div>
+    ${modo==="escalera" ? cmpHtmlEscalera(c, has, esSoja, uni, ref) : ""}
+    ${modo==="escalera" ? "" : `<div class="fila3">
       <div class="campo-form"><label>Rinde desde (kg/ha)</label><input type="text" inputmode="decimal" value="${ppH(c.rDesde)}" placeholder="Ej: 4000" onchange="cmpSet(S.cmp,'rDesde',this.value)"></div>
       <div class="campo-form"><label>Rinde hasta</label><input type="text" inputmode="decimal" value="${ppH(c.rHasta)}" placeholder="Ej: 9000" onchange="cmpSet(S.cmp,'rHasta',this.value)"></div>
       <div class="campo-form"><label>Paso</label><input type="text" inputmode="decimal" value="${ppH(c.rPaso)}" placeholder="Ej: 1000" onchange="cmpSet(S.cmp,'rPaso',this.value)"></div>
@@ -2383,12 +2390,13 @@ function cmpHtmlSens(){
       <div class="campo-form"><label>Arrendamiento desde (${uni})</label><input type="text" inputmode="decimal" value="${ppH(c.qDesde)}" placeholder="Ej: 6" onchange="cmpSet(S.cmp,'qDesde',this.value)"></div>
       <div class="campo-form"><label>Hasta</label><input type="text" inputmode="decimal" value="${ppH(c.qHasta)}" placeholder="Ej: 14" onchange="cmpSet(S.cmp,'qHasta',this.value)"></div>
       <div class="campo-form"><label>Paso</label><input type="text" inputmode="decimal" value="${ppH(c.qPaso)}" placeholder="Ej: 2" onchange="cmpSet(S.cmp,'qPaso',this.value)"></div>
-    </div>
+    </div>`}
     <div class="aviso">Referencias en uso: precio ${ppH(c.cultivo)} <b>${num(cc.precioTn)>0? (cc.moneda==="USD"?"USD ":"$ ")+fm2(num(cc.precioTn))+"/tn":"<span style='color:var(--rojo)'>sin cargar</span>"}</b>
       · gastos <b>${fm2(ref.pct)}%</b> (${ref.hayCom?"SIN gtos com. + comercialización aparte":"CON gtos com."})
       · ${esSoja?"soja":"novillo"} <b>${ref.pArr>0? "$ "+fm2(ref.pArr)+(esSoja?"/qq":"/kg") : "<span style='color:var(--rojo)'>sin cargar</span>"}</b>
       ${ref.faltaPrecio||ref.faltaArr? "<br>⚠ Cargá lo que falta en Simulador / Parámetros para que el comparativo tenga sentido." : ""}</div>
   </div>`;
+  if(modo==="escalera") return h;
   if(!rindes.length || !qqs.length || !(has>0)){
     h += `<div class="tarjeta"><p class="sub" style="margin:0">Cargá has, el rango de rindes y el rango de arrendamiento (desde / hasta / paso) para ver la tabla. Para comparar un solo arrendamiento con varios rindes, poné el mismo valor en "desde" y "hasta".</p></div>`;
     return h;
@@ -2417,8 +2425,43 @@ function cmpHtmlSens(){
   return h;
 }
 
+function cmpTramosRango(tr, i, rDesde){
+  // rinde inferior y superior de cada tramo (el primero arranca en "rinde desde" o en 0; el último es "más de")
+  const inf = i===0 ? num(rDesde) : num(tr[i-1].rinde);
+  const sup = i<tr.length-1 || i===0 && tr.length===1 ? num(tr[i].rinde) : null;
+  return {inf, sup};
+}
+function cmpHtmlEscalera(c, has, esSoja, uni, ref){
+  const tr = preTramos();
+  let h = `<div class="campo-form"><label>Rinde mínimo considerado (kg/ha) — desde dónde arranca el primer tramo</label>
+    <input type="text" inputmode="decimal" value="${ppH(c.rDesde)}" placeholder="Ej: 6000" onchange="cmpSet(S.cmp,'rDesde',this.value)"></div>`;
+  if(!tr.length){
+    h += `<div class="aviso">Todavía no hay tramos cargados. Cargalos en la solapa <b>Precontrato</b> (uno por uno o con el generador automático) y acá vas a ver el margen de cada tramo.</div>`;
+    return h;
+  }
+  if(!(has>0)) return h + `<div class="aviso">Cargá las has para ver los márgenes.</div>`;
+  h += `<div class="pp-scroll"><table class="pp-tab" style="min-width:0"><thead><tr><th>Tramo</th><th>Rinde</th><th style="text-align:right">Arrend.</th><th style="text-align:right">Margen al rinde menor</th><th style="text-align:right">Margen al rinde mayor</th><th style="text-align:right;background:#0d2c54">Máx. a pagar (rinde menor)</th></tr></thead><tbody>`;
+  tr.forEach((t,i)=>{
+    const {inf, sup} = cmpTramosRango(tr, i, c.rDesde);
+    const q = num(t.qq);
+    const rango = i===0 ? (inf>0? fm2(inf)+" a "+fm2(sup)+" kg/ha" : "hasta "+fm2(sup)+" kg/ha")
+                : (sup!==null ? "de "+fm2(inf+1)+" a "+fm2(sup)+" kg/ha" : "más de "+fm2(inf)+" kg/ha");
+    const rI = inf>0? inf : (sup!==null? sup : num(t.rinde));
+    const xI = agriCalcPuro(c.cultivo, has, rI, q);
+    const xS = sup!==null ? agriCalcPuro(c.cultivo, has, sup, q) : null;
+    const cel = x => `<td style="text-align:right;background:${cmpColor(x.resultado)};white-space:nowrap"><b>${cmpFmtCel(x.margenHa)}/ha</b><br><small style="color:var(--gris)">${cmpFmtCel(x.resultado)} · ${fm2(x.margenPct)}% · a ${fm2(x.rinde)} kg</small></td>`;
+    h += `<tr><td>${i+1}</td><td style="white-space:nowrap">${rango}</td><td style="text-align:right;font-weight:800;white-space:nowrap">${fm2(q)} ${esSoja?"qq":"kg"}</td>
+      ${cel(xI)}${xS? cel(xS) : `<td style="text-align:center;color:var(--gris)">sigue subiendo</td>`}
+      <td style="text-align:right;font-weight:800;background:#eef4fb;white-space:nowrap">${xI.qqMax!==null? fm2(xI.qqMax)+" "+(esSoja?"qq":"kg") : "—"}</td></tr>`;
+  });
+  h += `</tbody></table></div>
+    <div class="aviso">Dentro de cada tramo el arrendamiento es fijo, así que el margen va del "rinde menor" (peor caso del tramo) al "rinde mayor" (mejor caso). Si el margen al rinde menor está en rojo, ese tramo puede dar pérdida. "Máx. a pagar" es el tope de ${uni} que cierra sin perder en el peor rinde del tramo. Los tramos se editan en la solapa Precontrato.</div>
+    <button class="btn" style="margin-top:12px" id="btPdfCmp" onclick="cmpPDF()">📄 Ver PDF comparativo</button>`;
+  return h;
+}
 async function cmpPDF(){
   const c=S.cmp, has=num(c.has);
+  if((c.modo||"matriz")==="escalera") return cmpPDFEscalera();
   const rindes=cmpSerie(c.rDesde,c.rHasta,c.rPaso), qqs=cmpSerie(c.qDesde,c.qHasta,c.qPaso);
   if(!rindes.length||!qqs.length||!(has>0)){ toast("Completá has y los rangos primero"); return; }
   const bt=document.getElementById("btPdfCmp"); if(bt){ bt.innerHTML='<span class="spin">⏳</span> Armando PDF…'; bt.disabled=true; }
@@ -2485,6 +2528,62 @@ async function cmpPDF(){
   if(bt){ bt.innerHTML="📄 Ver PDF comparativo"; bt.disabled=false; }
 }
 
+async function cmpPDFEscalera(){
+  const c=S.cmp, has=num(c.has), tr=preTramos();
+  if(!tr.length||!(has>0)){ toast("Cargá has y los tramos (en Precontrato) primero"); return; }
+  const bt=document.getElementById("btPdfCmp"); if(bt){ bt.innerHTML='<span class="spin">⏳</span> Armando PDF…'; bt.disabled=true; }
+  try{
+    await cargarJsPDF();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:"mm", format:"a4", orientation:"landscape"});
+    const W=297, MI=12, MD=285;
+    const esSoja=S.arrTipo==="SOJA_QQ", uni=esSoja?"qq soja/ha":"kg novillo/ha";
+    const cc=S.params.cultivos[c.cultivo]||{};
+    const ref=agriCalcPuro(c.cultivo, has, num(tr[0].rinde), num(tr[0].qq));
+    let y = ppMembrete(doc, W, MI, MD, "Comparativo por tramos de rinde", sinEmoji((S.nombreCampo? S.nombreCampo+" · ":"")+c.cultivo+" · "+fm2(has)+" has"));
+    doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(95,112,132);
+    const refs = "Generado el "+HOY()+"  ·  Precio "+c.cultivo+": "+(cc.moneda==="USD"?"USD ":"$ ")+fm2(num(cc.precioTn))+"/tn"
+      +"  ·  Gastos "+fm2(ref.pct)+"% s/ventas ("+(ref.hayCom?"sin gtos com. + comercializacion aparte":"con gtos com.")+")"
+      +"  ·  "+(esSoja?"Soja $ "+fm2(ref.pArr)+"/qq":"Novillo $ "+fm2(ref.pArr)+"/kg");
+    doc.splitTextToSize(sinEmoji(refs), MD-MI).forEach(l=>{ doc.text(l, MI, y); y+=3.8; });
+    y+=3;
+    const cols=[{t:"Tramo",w:14},{t:"Rinde de "+sinEmoji(c.cultivo),w:60},{t:"Arrendamiento",w:32},{t:"Margen al rinde menor",w:62},{t:"Margen al rinde mayor",w:62},{t:"Max. a pagar (rinde menor)",w:43}];
+    const cab=()=>{ let x=MI; doc.setFillColor(21,101,192); doc.rect(MI,y-4.5,MD-MI,7,"F"); doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(8);
+      cols.forEach((col,i)=>{ doc.text(col.t, i>=2? x+col.w-1.5 : x+1.5, y, i>=2?{align:"right"}:{}); x+=col.w; }); y+=5.5; };
+    cab();
+    tr.forEach((t,i)=>{
+      if(y+11>195){ doc.addPage(); y=16; cab(); }
+      const {inf,sup}=cmpTramosRango(tr,i,c.rDesde), q=num(t.qq);
+      const rango = i===0 ? (inf>0? fm2(inf)+" a "+fm2(sup)+" kg/ha" : "hasta "+fm2(sup)+" kg/ha") : (sup!==null ? "de "+fm2(inf+1)+" a "+fm2(sup)+" kg/ha" : "mas de "+fm2(inf)+" kg/ha");
+      const rI = inf>0? inf : (sup!==null? sup : num(t.rinde));
+      const xI=agriCalcPuro(c.cultivo,has,rI,q), xS= sup!==null? agriCalcPuro(c.cultivo,has,sup,q) : null;
+      let x=MI;
+      doc.setTextColor(20,32,46); doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+      doc.text(String(i+1), x+1.5, y+1); x+=cols[0].w;
+      doc.text(rango, x+1.5, y+1); x+=cols[1].w;
+      doc.setFont("helvetica","bold"); doc.text(fm2(q)+" "+(esSoja?"qq/ha":"kg/ha"), x+cols[2].w-1.5, y+1, {align:"right"}); x+=cols[2].w;
+      const cel=(xx,w)=>{ const col= xx.resultado>0?[217,242,221]:xx.resultado<0?[249,220,220]:[255,248,225];
+        doc.setFillColor(col[0],col[1],col[2]); doc.rect(x, y-3.5, w, 10, "F");
+        doc.setTextColor(20,32,46); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
+        doc.text(cmpFmtCel(xx.margenHa).replace("−","-")+"/ha", x+w-1.5, y+0.5, {align:"right"});
+        doc.setFont("helvetica","normal"); doc.setFontSize(6.5); doc.setTextColor(95,112,132);
+        doc.text(cmpFmtCel(xx.resultado).replace("−","-")+"  ·  "+fm2(xx.margenPct)+"%  ·  a "+fm2(xx.rinde)+" kg", x+w-1.5, y+4.2, {align:"right"}); x+=w; };
+      cel(xI, cols[3].w);
+      if(xS) cel(xS, cols[4].w); else { doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(95,112,132); doc.text("sigue subiendo", x+cols[4].w/2, y+1, {align:"center"}); x+=cols[4].w; }
+      doc.setFillColor(238,244,251); doc.rect(x, y-3.5, cols[5].w, 10, "F");
+      doc.setTextColor(20,32,46); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
+      doc.text(xI.qqMax!==null? fm2(xI.qqMax)+" "+(esSoja?"qq":"kg") : "-", x+cols[5].w-1.5, y+1, {align:"right"});
+      y+=11;
+    });
+    y+=3;
+    doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(95,112,132);
+    doc.text("Dentro de cada tramo el arrendamiento es fijo: el margen va del rinde menor (peor caso) al rinde mayor (mejor caso). Verde: ganancia. Rojo: perdida. \"Max. a pagar\": tope de "+uni+" que cierra sin perder en el peor rinde del tramo.", MI, y, {maxWidth:MD-MI});
+    const nombre="comparativo_tramos_"+(S.nombreCampo? S.nombreCampo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"_").slice(0,25)+"_":"")+c.cultivo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")+"_"+HOY().replace(/\//g,"-")+".pdf";
+    await verPDF(doc, nombre, "Comparativo por tramos de rinde", "Comparativo por tramos "+c.cultivo+(S.nombreCampo?" · "+S.nombreCampo:"")+" · "+fm2(has)+" has");
+  }catch(e){ if(e && e.name!=="AbortError") toast("No se pudo armar el PDF: "+(e.message||e)); }
+  if(bt){ bt.innerHTML="📄 Ver PDF comparativo"; bt.disabled=false; }
+}
+
 /* ---------- PRECONTRATO ---------- */
 function preTramos(){ const p=S.pre; return Object.entries(p.tramos||{}).map(([id,t])=>Object.assign({id},t)).sort((a,b)=>num(a.rinde)-num(b.rinde)); }
 function cmpHtmlPre(){
@@ -2531,9 +2630,14 @@ function cmpHtmlPre(){
         <div class="campo-form"><label>Rinde hasta</label><input type="text" inputmode="decimal" id="pre_gr2" placeholder="10000"></div>
         <div class="campo-form"><label>Paso rinde</label><input type="text" inputmode="decimal" id="pre_grp" placeholder="1000"></div>
         <div class="campo-form"><label>Arrendamiento inicial</label><input type="text" inputmode="decimal" id="pre_gq1" placeholder="6"></div>
-        <div class="campo-form"><label>Suma por tramo</label><input type="text" inputmode="decimal" id="pre_gqp" placeholder="1.5"></div>
+        <div class="campo-form"><label>Suma por tramo</label><input type="text" inputmode="decimal" id="pre_gqp" placeholder="1"></div>
         <div class="campo-form"><label>&nbsp;</label><button class="btn peq sec" style="width:100%" onclick="preGenerar()">Generar (reemplaza)</button></div>
-      </div></details>
+      </div>
+      <div class="fila2" style="margin-top:4px">
+        <div class="campo-form"><label>Cambio de escala (opcional): a partir de rinde mayor a</label><input type="text" inputmode="decimal" id="pre_gr3" placeholder="Ej: 11000"></div>
+        <div class="campo-form"><label>…sumar por tramo</label><input type="text" inputmode="decimal" id="pre_gqp2" placeholder="Ej: 0.5"></div>
+      </div>
+      <div class="nota-fecha">Ej.: desde 8.000 hasta 13.000, paso 1.000, inicial 9, suma 1, cambio a partir de 11.000 sumar 0,5 → hasta 8.000: 9 · 9.000: 10 · 10.000: 11 · 11.000: 12 · 12.000: 12,5 · más de 12.000: 13.</div></details>
     ${tr.length? `<div class="pp-scroll"><table class="pp-tab" style="min-width:0"><thead><tr><th>Tramo</th><th>Si el rinde de ${ppH(p.cultivo||"cultivo")} es</th><th style="text-align:right">Arrendamiento</th><th style="text-align:right">Total (${fm2(num(p.has))} has)</th><th style="text-align:right">Ref. $ hoy</th><th></th></tr></thead><tbody>
       ${tr.map((t,i)=>{ const sig=tr[i+1]; const has=num(p.has);
         const rango = i===0? "hasta "+fm2(num(t.rinde))+" kg/ha" : (sig? "de "+fm2(num(tr[i-1].rinde)+1)+" a "+fm2(num(t.rinde))+" kg/ha" : "más de "+fm2(num(tr[i-1].rinde))+" kg/ha");
@@ -2559,10 +2663,14 @@ function preTramoNuevo(){
 function preGenerar(){
   const r1=num(document.getElementById("pre_gr1").value), r2=num(document.getElementById("pre_gr2").value), rp=num(document.getElementById("pre_grp").value);
   const q1=num(document.getElementById("pre_gq1").value), qp=num(document.getElementById("pre_gqp").value);
+  const r3=num((document.getElementById("pre_gr3")||{}).value), qp2=num((document.getElementById("pre_gqp2")||{}).value);
   if(!(r1>0)||!(rp>0)||!(q1>0)){ toast("Completá rinde desde/hasta/paso y arrendamiento inicial"); return; }
   if(Object.keys(S.pre.tramos||{}).length && !confirm("Se reemplazan los tramos actuales. ¿Seguir?")) return;
   S.pre.tramos={}; let q=q1, n=0;
-  for(let r=r1; r<=Math.max(r1,r2)+1e-9 && n<20; r+=rp, q+=qp, n++) S.pre.tramos["t"+n]={rinde:Math.round(r), qq:Math.round(q*100)/100};
+  for(let r=r1; r<=Math.max(r1,r2)+1e-9 && n<30; r+=rp, n++){
+    S.pre.tramos["t"+String(n).padStart(2,"0")]={rinde:Math.round(r), qq:Math.round(q*100)/100};
+    q += (r3>0 && r>=r3-1e-9 && qp2>0) ? qp2 : qp;   // pasado el cambio de escala, suma distinto
+  }
   guardar(); cmpRender(); toast("✔ "+n+" tramos generados");
 }
 async function prePDF(){
