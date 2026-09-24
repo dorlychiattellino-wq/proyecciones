@@ -127,6 +127,7 @@
 
 <nav class="principal">
   <button class="activo" data-v="vSim" onclick="verVista('vSim',this)">📊 Simulador</button>
+  <button data-v="vCmp" onclick="verVista('vCmp',this);cmpRender()">📐 Comparativo</button>
   <button data-v="vPresu" onclick="verVista('vPresu',this)">💰 Presupuestos</button>
   <button data-v="vNotas" onclick="verVista('vNotas',this)">📝 Notas</button>
   <button data-v="vInsumos" onclick="verVista('vInsumos',this);insRender()">🧪 Insumos</button>
@@ -241,6 +242,17 @@
     <div id="balVeredicto"></div>
     <button class="btn" style="margin-top:12px" id="btPDF" onclick="compartirPDF()">📄 Ver PDF</button>
   </div>
+</section>
+
+<!-- ==================== COMPARATIVO / PRECONTRATO ==================== -->
+<section id="vCmp" class="vista">
+  <h2 class="sec">Comparativo y precontrato</h2>
+  <p class="sub">Sensibilidad rinde × arrendamiento y esquema de precontrato por rinde, ambos en PDF con membrete.</p>
+  <div class="subnav">
+    <button data-s="sens" class="activo" onclick="cmpVer('sens')">📐 Comparativo</button>
+    <button data-s="pre" onclick="cmpVer('pre')">📝 Precontrato</button>
+  </div>
+  <div id="cmpCuerpo"></div>
 </section>
 
 <!-- ==================== PRESUPUESTOS ==================== -->
@@ -492,6 +504,8 @@ function estadoInicial(){
     presu:{},              // presupuestos de insumos: {id: {...}}
     notas:{},              // notas / recordatorios con semáforo: {id: {...}}
     ins: JSON.parse(JSON.stringify(INS_SEED)),   // insumos de campaña (lotes, dosis, precios)
+    cmp:{cultivo:"", has:"", rDesde:"", rHasta:"", rPaso:"", qDesde:"", qHasta:"", qPaso:""},
+    pre:{arrendador:"", arrendatario:"Osvaldo Gustavo Solsona (EL MESTIZO)", campo:"", has:"", campania:"", cultivo:"", unidad:"SOJA_QQ", tramos:{}, fecha:"", vigencia:"", lugar:"", obs:"", plazoPago:""},
     presuTC:{venta:"",fecha:""},    // dólar BNA vendedor usado en presupuestos
     presuTCMay:{venta:"",fecha:""}  // dólar mayorista vendedor usado en presupuestos
   };
@@ -512,6 +526,7 @@ function completarEstado(obj){
   // Migración: antes cada cultivo tenía un solo % ("pct"); ahora hay dos:
   // pctSin (sin gtos comercialización — el % viejo, porque la comercialización iba aparte)
   // pctCon (con gtos comercialización incluidos)
+  if(obj.ins) insReparar(obj.ins);
   for(const nom in obj.params.cultivos){
     const c = obj.params.cultivos[nom];
     if(c.pctSin===undefined) c.pctSin = (c.pct!==undefined)? c.pct : "40";
@@ -1081,7 +1096,7 @@ function calc(){
 /* ============================================================
    PDF PARA COMPARTIR (WhatsApp, mail, etc.)
    ============================================================ */
-function sinEmoji(t){ return String(t).replace(/[^\x20-\xFF]/g,"").replace(/\s+/g," ").trim(); }
+function sinEmoji(t){ return String(t).replace(/[—–]/g,"-").replace(/…/g,"...").replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/[^\x20-\xFF]/g,"").replace(/\s+/g," ").trim(); }
 async function cargarJsPDF(){
   if(window.jspdf) return;
   await new Promise((res,rej)=>{
@@ -1194,7 +1209,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 24;   // subir este número en cada actualización del archivo
+const VERSION_APP = 26;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -1297,9 +1312,15 @@ function alRecibir(remoto){
     return;
   }
   delete remoto._mod;
+  const crudo = copiar(remoto);
   const rem = completarEstado(copiar(remoto));
   delete rem._mod;
   lastSync = copiar(rem);
+  // campos que la nube no tiene (datos nuevos de esta versión, claves reparadas): se suben
+  try{
+    const faltan = calcularDiff(rem, crudo);
+    if(Object.keys(faltan).length){ Object.assign(pendientes, faltan); guardarPend(); }
+  }catch(e){}
   // encima de lo de la nube van los cambios propios todavía no subidos
   for(const r in pendientes) setPorRuta(rem, r, pendientes[r]);
   const igual = JSON.stringify(rem)===JSON.stringify(S);
@@ -1822,7 +1843,7 @@ function ppPintarCerrados(){
      cultivos[], campanas[], campBase, campActual, tc, stock{insumoId:n},
      comentarios, campania
    ============================================================ */
-const INS_SEED = {"insumos":{"2_4_d_advance":{"nombre":"2,4 D Advance","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":5,"2026/2027":4.6},"ord":0},"2_4_d_enlist":{"nombre":"2,4 D Enlist","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":4.8,"2026/2027":4.8},"ord":1},"2_4_d_micro_emulsion_30":{"nombre":"2,4 D Micro Emulsión 30 %","categoria":"","unidad":"lt","obs":"","precios":{"2026/2027":3.18},"ord":2},"abamectina":{"nombre":"Abamectina","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025/2026":10.55},"ord":3},"aceite_ttm":{"nombre":"Aceite TTM","categoria":"Coadyuvante","unidad":"Lts","obs":"","precios":{"2025/2026":15,"2026/2027":15},"ord":4},"all_ok":{"nombre":"All Ok","categoria":"","unidad":"lt","obs":"","precios":{"2026/2027":21},"ord":5},"ampligo_zariva":{"nombre":"Ampligo Zariva","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025/2026":95.2,"2026/2027":84.6},"ord":6},"ariette":{"nombre":"Ariette","categoria":"","unidad":"lt","obs":"","precios":{"2026/2027":14.8},"ord":7},"atrazina_granulada_90":{"nombre":"Atrazina Granulada 90 %","categoria":"Herbicida","unidad":"Kgs","obs":"primerar Marcas, como Gesaprim o Trac 90","precios":{"2025/2026":5.4,"2026/2027":5.82},"ord":8},"bifentrin_zamuray":{"nombre":"Bifentrin Zamuray","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025/2026":7.2},"ord":9},"clearsol_pack_6_has":{"nombre":"Clearsol (pack 6 has)","categoria":"","unidad":"pack","obs":"","precios":{"2026/2027":97.4},"ord":10},"cletodim_24":{"nombre":"Cletodim 24 %","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":7.75,"2026/2027":6.5},"ord":11},"coragen_evo":{"nombre":"Coragen Evo","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025/2026":233},"ord":12},"dicamba_57_8":{"nombre":"Dicamba 57,8%","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":6.57},"ord":13},"elevore":{"nombre":"Elevore","categoria":"Herbicida","unidad":"lt","obs":"","precios":{"2025/2026":150,"2026/2027":140},"ord":14},"exito":{"nombre":"Éxito","categoria":"Coadyuvante/Compatibilizador","unidad":"Lts","obs":"","precios":{"2025/2026":17.3},"ord":15},"expedition":{"nombre":"Expedition","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025/2026":29.6},"ord":16},"flumioxazin_48":{"nombre":"Flumioxazin 48 %","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":17.75,"2026/2027":17.5},"ord":17},"funcion_pack":{"nombre":"Función Pack","categoria":"","unidad":"caja","obs":"Caja para curar e inocular soja. Cada caja son para 3000 kg cada una. Es en el caso que se clasifique soja de uso propio. Se calculo 70 kilos de soja/ha","precios":{"2026/2027":400},"ord":18},"galant_max_93_5":{"nombre":"Galant Max 93.5%","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":43.5},"ord":19},"girasol_brevant_brv4225_cl_g1_150_000_semillas":{"nombre":"Girasol Brevant BRV4225 CL G1 (150.000 semillas)","categoria":"Semilla","unidad":"Bolsa","obs":"Girasol para Cuadro y Olgado","precios":{"2025/2026":224.2,"2026/2027":270},"ord":20},"girasol_sps_3125_cl_b1_180_000_semillas":{"nombre":"Girasol SPS 3125 CL B1 (180.000 semillas","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2026/2027":260},"ord":21},"glifosato_granulado_72":{"nombre":"Glifosato granulado 72 %","categoria":"","unidad":"Kgs","obs":"","precios":{"2025/2026":4.98,"2026/2027":5.95},"ord":22},"glufosinato_amonio_20":{"nombre":"Glufosinato Amonio 20 %","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":3.5,"2026/2027":3.5},"ord":23},"heat_adjeva":{"nombre":"Heat Adjeva","categoria":"Herbicida","unidad":"Grs","obs":"","precios":{"2025/2026":302,"2026/2027":292},"ord":24},"lambda_al_25":{"nombre":"Lambda al 25","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025/2026":35.2,"2026/2027":35.2},"ord":25},"maiz_brevant_brv8421_pwuen_spc":{"nombre":"Maíz Brevant BRV8421 Pwuen SPC","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2025/2026":136,"2026/2027":146},"ord":26},"maiz_la_tijereta_lt720vt3_b2_doble_prop":{"nombre":"Maíz La Tijereta LT720VT3 B2 Doble Prop.","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2026/2027":131},"ord":27},"maiz_la_tijereta_lt722vt3_b3":{"nombre":"Maíz La Tijereta LT722VT3 B3","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2026/2027":103},"ord":28},"maiz_sps_2724_tg_cl_b3":{"nombre":"Maíz SPS 2724 TG/CL B3","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{},"ord":29},"maiz_sps_2743_viptera_b3_doble_prop":{"nombre":"Maíz SPS 2743 Viptera B3 Doble Prop.","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2026/2027":130},"ord":30},"maiz_syngenta_nk825_cl_b1":{"nombre":"Maíz Syngenta NK825 CL B1","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2026/2027":152},"ord":31},"map_monoamonico":{"nombre":"MAP(Monoamónico)","categoria":"Fertilizante","unidad":"Kgs","obs":"","precios":{"2025/2026":0.955,"2026/2027":1.005},"ord":32},"mesotrione_48":{"nombre":"Mesotrione 48 %","categoria":"","unidad":"lt","obs":"","precios":{"2026/2027":22.15},"ord":33},"paraquat":{"nombre":"Paraquat","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":3.3,"2026/2027":3.3},"ord":34},"picloran":{"nombre":"Picloran","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":9,"2026/2027":8.5},"ord":35},"piroxasulfone_48":{"nombre":"Piroxasulfone 48 %","categoria":"","unidad":"lt","obs":"","precios":{"2026/2027":62},"ord":36},"power_plus":{"nombre":"Power Plus","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":4.12,"2026/2027":4.45},"ord":37},"silobolsa_9x75":{"nombre":"Silobolsa 9x75","categoria":"Almacenaje","unidad":"Unidad","obs":"","precios":{"2026/2027":450},"ord":38},"s_metalacloro":{"nombre":"S-Metalacloro","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":5.82,"2026/2027":6.67},"ord":39},"soja_dm46e25_sts_se_bbx800_kg":{"nombre":"Soja DM46E25 STS SE BBx800 kg","categoria":"Semilla","unidad":"BB","obs":"","precios":{"2025/2026":3996},"ord":40},"sttager":{"nombre":"Sttager","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":42.4,"2026/2027":40.2},"ord":41},"sulfato_amonio":{"nombre":"Sulfato Amonio","categoria":"Fertilizante","unidad":"Lts","obs":"","precios":{"2025/2026":1.65,"2026/2027":1.1},"ord":42},"sulfentrazone_50":{"nombre":"Sulfentrazone 50 %","categoria":"Herbicida","unidad":"Lts","obs":"Primeras marcas","precios":{"2025/2026":17.8,"2026/2027":19.05},"ord":43},"girasol_syn_397_o_nk_3969_180_000_semillas":{"nombre":"Girasol SYN 397 o NK 3969 (180.000 semillas)","categoria":"Semilla","unidad":"Bolsa","obs":"Para girasol sobre girasol por buen comportamiento a enfermedades. Bolsa de 180 mil Semilla. Se puso para Brambilla y Zabala. Cualquiera de los dos son los mejores girasoles del mercado","precios":{"2026/2027":290},"ord":44},"urea_azufrada_38_4_protegida":{"nombre":"Urea Azufrada 38-4  protegida","categoria":"Fertilizante","unidad":"Kgs","obs":"Se calculo 180 kg de urea azufrada (37 % Nitrógeno y 4 % azufre) por hectárea","precios":{"2025/2026":0.585,"2026/2027":0.64},"ord":45},"glifosato_panzar_gold":{"nombre":"Glifosato Panzar Gold","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025/2026":4.2},"ord":46},"bio_verde_sil":{"nombre":"Bio verde Sil","categoria":"Coadyuvante","unidad":"Lts","obs":"","precios":{"2025/2026":30},"ord":47},"banvel":{"nombre":"Banvel","categoria":"","unidad":"","obs":"","precios":{},"ord":48},"karate_zeon":{"nombre":"Karate Zeon","categoria":"","unidad":"","obs":"","precios":{},"ord":49},"haloxifop_54_zavobia":{"nombre":"Haloxifop 54 Zavobia","categoria":"","unidad":"","obs":"","precios":{},"ord":50},"dilfufenican_50":{"nombre":"Dilfufenican 50 %","categoria":"","unidad":"","obs":"","precios":{},"ord":51},"map_con_zinc":{"nombre":"Map con Zinc","categoria":"","unidad":"","obs":"","precios":{},"ord":52},"urea_azufrada_no_protegida":{"nombre":"Urea azufrada no protegida","categoria":"","unidad":"","obs":"","precios":{},"ord":53},"vitracto_pack":{"nombre":"Vitracto Pack","categoria":"","unidad":"","obs":"","precios":{},"ord":54},"quintal_extra":{"nombre":"Quintal Extra","categoria":"","unidad":"","obs":"","precios":{},"ord":55},"elatus_ace":{"nombre":"Elatus Ace","categoria":"","unidad":"","obs":"","precios":{},"ord":56},"miravis_duo":{"nombre":"Miravis Duo","categoria":"","unidad":"","obs":"","precios":{},"ord":57},"sorgo_forrajero_advanta_2650_ig":{"nombre":"Sorgo Forrajero Advanta 2650 IG","categoria":"","unidad":"bolsa","obs":"Girasol Igrow. Se calculó 13 kilos/ha en bolsas de 20 kg cada una","precios":{"2026/2027":89},"ord":58},"axial":{"nombre":"Axial","categoria":"","unidad":"","obs":"","precios":{},"ord":59}},"lotes":{"l01":{"nombre":"Zabala Girasol","has":102,"cultivo":"Girasol","dosis":{"glifosato_granulado_72":3.0,"2_4_d_micro_emulsion_30":2.5,"ampligo_zariva":0.1,"sttager":0.15,"aceite_ttm":0.2,"cletodim_24":0.5,"elevore":0.12,"sulfato_amonio":1.6,"sulfentrazone_50":0.3,"s_metalacloro":1.0,"lambda_al_25":0.05,"girasol_syn_397_o_nk_3969_180_000_semillas":0.32},"ord":0},"l02":{"nombre":"Zabala sorgo Foorajero CL","has":0,"cultivo":"Sorgo","dosis":{"power_plus":6.0,"atrazina_granulada_90":2.0,"2_4_d_micro_emulsion_30":2.5,"clearsol_pack_6_has":0.16,"sulfato_amonio":2.0,"picloran":0.13,"sorgo_forrajero_advanta_2650_ig":0.65},"ord":1},"l03":{"nombre":"Olgado Soja","has":16,"cultivo":"Soja","dosis":{"glifosato_granulado_72":3.5,"aceite_ttm":0.6,"all_ok":0.3,"cletodim_24":1.0,"flumioxazin_48":0.12,"sulfato_amonio":2.0,"glufosinato_amonio_20":4.0,"sulfentrazone_50":0.45,"heat_adjeva":0.035,"2_4_d_enlist":3.0,"ariette":0.2,"s_metalacloro":1.0,"funcion_pack":0.023},"ord":2},"l04":{"nombre":"Cuadrodo Girasol","has":37,"cultivo":"Girasol","dosis":{"glifosato_granulado_72":3.0,"paraquat":2.0,"2_4_d_micro_emulsion_30":2.5,"ampligo_zariva":0.1,"sttager":0.15,"aceite_ttm":0.4,"cletodim_24":0.5,"clearsol_pack_6_has":0.16,"elevore":0.12,"sulfato_amonio":1.6,"sulfentrazone_50":0.3,"s_metalacloro":1.0,"lambda_al_25":0.05,"girasol_brevant_brv4225_cl_g1_150_000_semillas":0.32},"ord":3},"l05":{"nombre":"Brambilla girasol","has":0,"cultivo":"Girasol","dosis":{"glifosato_granulado_72":1.5,"ampligo_zariva":0.1,"sttager":0.15,"aceite_ttm":0.4,"clearsol_pack_6_has":0.16,"sulfato_amonio":1.6,"sulfentrazone_50":0.2,"piroxasulfone_48":0.3,"lambda_al_25":0.05,"girasol_syn_397_o_nk_3969_180_000_semillas":0.32},"ord":4},"l06":{"nombre":"Manasse Maíz","has":59,"cultivo":"Maíz","dosis":{"power_plus":2.0,"atrazina_granulada_90":2.6,"ampligo_zariva":0.1,"aceite_ttm":0.2,"all_ok":0.6,"sulfato_amonio":1.6,"map_monoamonico":80.0,"picloran":0.12,"mesotrione_48":0.3,"urea_azufrada_38_4_protegida":180.0,"s_metalacloro":1.3},"ord":5},"l07":{"nombre":"Don Bonifacio Maíz","has":37,"cultivo":"Maíz","dosis":{"power_plus":2.0,"atrazina_granulada_90":2.6,"ampligo_zariva":0.1,"aceite_ttm":0.2,"all_ok":0.6,"sulfato_amonio":1.6,"map_monoamonico":80.0,"picloran":0.12,"mesotrione_48":0.3,"urea_azufrada_38_4_protegida":180.0,"s_metalacloro":1.3},"ord":6},"l08":{"nombre":"Parra Soja","has":61,"cultivo":"Soja","dosis":{"glifosato_granulado_72":3.5,"aceite_ttm":0.6,"all_ok":0.3,"cletodim_24":1.0,"flumioxazin_48":0.12,"sulfato_amonio":2.0,"glufosinato_amonio_20":4.0,"sulfentrazone_50":0.45,"heat_adjeva":0.035,"2_4_d_enlist":3.0,"ariette":0.2,"s_metalacloro":1.0,"funcion_pack":0.023},"ord":7},"l09":{"nombre":"Moreno Quintas soja","has":57,"cultivo":"Soja","dosis":{"glifosato_granulado_72":3.5,"aceite_ttm":0.6,"all_ok":0.3,"cletodim_24":1.0,"flumioxazin_48":0.12,"sulfato_amonio":2.0,"glufosinato_amonio_20":4.0,"sulfentrazone_50":0.45,"heat_adjeva":0.035,"2_4_d_enlist":3.0,"ariette":0.2,"s_metalacloro":1.0,"funcion_pack":0.023},"ord":8},"l10":{"nombre":"Cuenca Girasol","has":30,"cultivo":"Girasol","dosis":{"glifosato_granulado_72":3.0,"2_4_d_micro_emulsion_30":2.5,"ampligo_zariva":0.1,"sttager":0.15,"aceite_ttm":0.2,"cletodim_24":0.5,"elevore":0.12,"sulfato_amonio":1.6,"sulfentrazone_50":0.3,"s_metalacloro":1.0,"lambda_al_25":0.05,"girasol_syn_397_o_nk_3969_180_000_semillas":0.32},"ord":9},"l11":{"nombre":"Zabala Maíz","has":7,"cultivo":"Maíz","dosis":{"power_plus":2.0,"atrazina_granulada_90":2.6,"ampligo_zariva":0.1,"aceite_ttm":0.2,"all_ok":0.6,"sulfato_amonio":1.6,"map_monoamonico":80.0,"picloran":0.12,"mesotrione_48":0.3,"urea_azufrada_38_4_protegida":180.0,"s_metalacloro":1.3},"ord":10},"l12":{"nombre":"Quinta","has":7,"cultivo":"Soja","dosis":{"glifosato_granulado_72":3.5,"aceite_ttm":0.6,"all_ok":0.3,"cletodim_24":1.0,"flumioxazin_48":0.12,"sulfato_amonio":2.0,"glufosinato_amonio_20":4.0,"sulfentrazone_50":0.45,"heat_adjeva":0.035,"2_4_d_enlist":3.0,"ariette":0.2,"s_metalacloro":1.0,"funcion_pack":0.023},"ord":11}},"dosisCultivo":{"power_plus":{"dosis":{"Maíz":2,"Sorgo":6},"obs":""},"glifosato_granulado_72":{"dosis":{"Girasol":3,"Soja":3.5},"obs":"Girasol: 3 en Zababal/Olgado/Cuadrado, 1,5 en Brambilla. Soja: 7,5 (Manasse) / 3,5 (Moreno Q.) / 3 (Cuenca) — se tomó valor intermedio."},"atrazina_granulada_90":{"dosis":{"Maíz":2.6,"Sorgo":2},"obs":""},"paraquat":{"dosis":{"Girasol":2},"obs":"Solo en Olgado y Cuadrado."},"2_4_d_micro_emulsion_30":{"dosis":{"Girasol":2.5,"Soja":2.5,"Sorgo":2.5},"obs":"Dosis para segundos golpes. En soja solo se usa en Manasse."},"ampligo_zariva":{"dosis":{"Girasol":0.1,"Maíz":0.1},"obs":""},"sttager":{"dosis":{"Girasol":0.15},"obs":""},"aceite_ttm":{"dosis":{"Girasol":0.4,"Soja":0.4,"Maíz":0.2},"obs":"Girasol: 0,2 en Zababal. Soja: 0,6 en Moreno Quintas."},"all_ok":{"dosis":{"Soja":0.3,"Maíz":0.6},"obs":"En soja solo se usa en Moreno Quintas."},"cletodim_24":{"dosis":{"Girasol":0.5,"Soja":0.7},"obs":"Soja: 1,0 en Moreno Quintas."},"flumioxazin_48":{"dosis":{"Soja":0.15},"obs":"0,15 en Manasse y 0,12 en Moreno Quintas; sin uso en Cuenca."},"clearsol_pack_6_has":{"dosis":{"Girasol":0.16,"Sorgo":0.16},"obs":"Pack cada 6 has. Sin Clearsol en Zababal (puede ir a verdeo). En sorgo, solo variedad CL."},"elevore":{"dosis":{"Girasol":0.12},"obs":"Media dosis, para rama negra en rastrojo de maíz de 1°."},"sulfato_amonio":{"dosis":{"Girasol":1.6,"Soja":2,"Maíz":1.6,"Sorgo":2},"obs":""},"glufosinato_amonio_20":{"dosis":{"Soja":1.5},"obs":"4,0 en Moreno Quintas (doble golpe + cierre de surco)."},"sulfentrazone_50":{"dosis":{"Girasol":0.3,"Soja":0.45},"obs":"Girasol: 0,2 en Brambilla."},"map_monoamonico":{"dosis":{"Maíz":80},"obs":""},"heat_adjeva":{"dosis":{"Soja":0.035},"obs":""},"picloran":{"dosis":{"Maíz":0.12,"Sorgo":0.13},"obs":"Usar con glifosatos granulados; con sulfosato puede precipitar."},"2_4_d_enlist":{"dosis":{"Soja":1.5},"obs":"3,0 en Moreno Quintas."},"mesotrione_48":{"dosis":{"Maíz":0.3},"obs":""},"urea_azufrada_38_4_protegida":{"dosis":{"Maíz":180},"obs":"180 kg/ha de urea azufrada (37 % N y 4 % S)."},"ariette":{"dosis":{"Soja":0.2},"obs":""},"s_metalacloro":{"dosis":{"Girasol":1,"Soja":1,"Maíz":1.3},"obs":""},"funcion_pack":{"dosis":{"Soja":0.023},"obs":"Curado e inoculado de soja: 1 caja cada 3.000 kg de semilla, calculado sobre 70 kg/ha."},"piroxasulfone_48":{"dosis":{"Girasol":0.3},"obs":"Solo en Brambilla."},"lambda_al_25":{"dosis":{"Girasol":0.05},"obs":""},"sorgo_forrajero_advanta_2650_ig":{"dosis":{"Sorgo":0.65},"obs":"13 kg/ha en bolsas de 20 kg."},"girasol_syn_397_o_nk_3969_180_000_semillas":{"dosis":{"Girasol":0.32},"obs":"Semilla de girasol — bolsa de 180 mil semillas. Usada en Zababal y Brambilla."},"girasol_brevant_brv4225_cl_g1_150_000_semillas":{"dosis":{"Girasol":0.32},"obs":"Semilla de girasol CL — usada en Olgado y Cuadrado. Alternativa a la anterior: va una u otra, no las dos."}},"cultivos":["Girasol","Soja","Maíz","Sorgo"],"campanas":["2025/2026","2026/2027"],"campBase":"2025/2026","campActual":"2026/2027","tc":1490.5,"stock":{},"comentarios":"Puede llegar a faltar algún insecticida y fungicida para soja, que se va viendo según cómo se presente el año.\nNo puse híbridos de maíz, hay muchos para diferentes situaciones.","campania":"2026-27"};
+const INS_SEED = {"insumos":{"2_4_d_advance":{"nombre":"2,4 D Advance","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025-2026":5,"2026-2027":4.6},"ord":0},"2_4_d_enlist":{"nombre":"2,4 D Enlist","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025-2026":4.8,"2026-2027":4.8},"ord":1},"2_4_d_micro_emulsion_30":{"nombre":"2,4 D Micro Emulsión 30 %","categoria":"","unidad":"lt","obs":"","precios":{"2026-2027":3.18},"ord":2},"abamectina":{"nombre":"Abamectina","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025-2026":10.55},"ord":3},"aceite_ttm":{"nombre":"Aceite TTM","categoria":"Coadyuvante","unidad":"Lts","obs":"","precios":{"2025-2026":15,"2026-2027":15},"ord":4},"all_ok":{"nombre":"All Ok","categoria":"","unidad":"lt","obs":"","precios":{"2026-2027":21},"ord":5},"ampligo_zariva":{"nombre":"Ampligo Zariva","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025-2026":95.2,"2026-2027":84.6},"ord":6},"ariette":{"nombre":"Ariette","categoria":"","unidad":"lt","obs":"","precios":{"2026-2027":14.8},"ord":7},"atrazina_granulada_90":{"nombre":"Atrazina Granulada 90 %","categoria":"Herbicida","unidad":"Kgs","obs":"primerar Marcas, como Gesaprim o Trac 90","precios":{"2025-2026":5.4,"2026-2027":5.82},"ord":8},"bifentrin_zamuray":{"nombre":"Bifentrin Zamuray","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025-2026":7.2},"ord":9},"clearsol_pack_6_has":{"nombre":"Clearsol (pack 6 has)","categoria":"","unidad":"pack","obs":"","precios":{"2026-2027":97.4},"ord":10},"cletodim_24":{"nombre":"Cletodim 24 %","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025-2026":7.75,"2026-2027":6.5},"ord":11},"coragen_evo":{"nombre":"Coragen Evo","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025-2026":233},"ord":12},"dicamba_57_8":{"nombre":"Dicamba 57,8%","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025-2026":6.57},"ord":13},"elevore":{"nombre":"Elevore","categoria":"Herbicida","unidad":"lt","obs":"","precios":{"2025-2026":150,"2026-2027":140},"ord":14},"exito":{"nombre":"Éxito","categoria":"Coadyuvante/Compatibilizador","unidad":"Lts","obs":"","precios":{"2025-2026":17.3},"ord":15},"expedition":{"nombre":"Expedition","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025-2026":29.6},"ord":16},"flumioxazin_48":{"nombre":"Flumioxazin 48 %","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025-2026":17.75,"2026-2027":17.5},"ord":17},"funcion_pack":{"nombre":"Función Pack","categoria":"","unidad":"caja","obs":"Caja para curar e inocular soja. Cada caja son para 3000 kg cada una. Es en el caso que se clasifique soja de uso propio. Se calculo 70 kilos de soja/ha","precios":{"2026-2027":400},"ord":18},"galant_max_93_5":{"nombre":"Galant Max 93.5%","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025-2026":43.5},"ord":19},"girasol_brevant_brv4225_cl_g1_150_000_semillas":{"nombre":"Girasol Brevant BRV4225 CL G1 (150.000 semillas)","categoria":"Semilla","unidad":"Bolsa","obs":"Girasol para Cuadro y Olgado","precios":{"2025-2026":224.2,"2026-2027":270},"ord":20},"girasol_sps_3125_cl_b1_180_000_semillas":{"nombre":"Girasol SPS 3125 CL B1 (180.000 semillas","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2026-2027":260},"ord":21},"glifosato_granulado_72":{"nombre":"Glifosato granulado 72 %","categoria":"","unidad":"Kgs","obs":"","precios":{"2025-2026":4.98,"2026-2027":5.95},"ord":22},"glufosinato_amonio_20":{"nombre":"Glufosinato Amonio 20 %","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025-2026":3.5,"2026-2027":3.5},"ord":23},"heat_adjeva":{"nombre":"Heat Adjeva","categoria":"Herbicida","unidad":"Grs","obs":"","precios":{"2025-2026":302,"2026-2027":292},"ord":24},"lambda_al_25":{"nombre":"Lambda al 25","categoria":"Insecticida","unidad":"Lts","obs":"","precios":{"2025-2026":35.2,"2026-2027":35.2},"ord":25},"maiz_brevant_brv8421_pwuen_spc":{"nombre":"Maíz Brevant BRV8421 Pwuen SPC","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2025-2026":136,"2026-2027":146},"ord":26},"maiz_la_tijereta_lt720vt3_b2_doble_prop":{"nombre":"Maíz La Tijereta LT720VT3 B2 Doble Prop.","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2026-2027":131},"ord":27},"maiz_la_tijereta_lt722vt3_b3":{"nombre":"Maíz La Tijereta LT722VT3 B3","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2026-2027":103},"ord":28},"maiz_sps_2724_tg_cl_b3":{"nombre":"Maíz SPS 2724 TG/CL B3","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{},"ord":29},"maiz_sps_2743_viptera_b3_doble_prop":{"nombre":"Maíz SPS 2743 Viptera B3 Doble Prop.","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2026-2027":130},"ord":30},"maiz_syngenta_nk825_cl_b1":{"nombre":"Maíz Syngenta NK825 CL B1","categoria":"Semilla","unidad":"Bolsa","obs":"","precios":{"2026-2027":152},"ord":31},"map_monoamonico":{"nombre":"MAP(Monoamónico)","categoria":"Fertilizante","unidad":"Kgs","obs":"","precios":{"2025-2026":0.955,"2026-2027":1.005},"ord":32},"mesotrione_48":{"nombre":"Mesotrione 48 %","categoria":"","unidad":"lt","obs":"","precios":{"2026-2027":22.15},"ord":33},"paraquat":{"nombre":"Paraquat","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025-2026":3.3,"2026-2027":3.3},"ord":34},"picloran":{"nombre":"Picloran","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025-2026":9,"2026-2027":8.5},"ord":35},"piroxasulfone_48":{"nombre":"Piroxasulfone 48 %","categoria":"","unidad":"lt","obs":"","precios":{"2026-2027":62},"ord":36},"power_plus":{"nombre":"Power Plus","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025-2026":4.12,"2026-2027":4.45},"ord":37},"silobolsa_9x75":{"nombre":"Silobolsa 9x75","categoria":"Almacenaje","unidad":"Unidad","obs":"","precios":{"2026-2027":450},"ord":38},"s_metalacloro":{"nombre":"S-Metalacloro","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025-2026":5.82,"2026-2027":6.67},"ord":39},"soja_dm46e25_sts_se_bbx800_kg":{"nombre":"Soja DM46E25 STS SE BBx800 kg","categoria":"Semilla","unidad":"BB","obs":"","precios":{"2025-2026":3996},"ord":40},"sttager":{"nombre":"Sttager","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025-2026":42.4,"2026-2027":40.2},"ord":41},"sulfato_amonio":{"nombre":"Sulfato Amonio","categoria":"Fertilizante","unidad":"Lts","obs":"","precios":{"2025-2026":1.65,"2026-2027":1.1},"ord":42},"sulfentrazone_50":{"nombre":"Sulfentrazone 50 %","categoria":"Herbicida","unidad":"Lts","obs":"Primeras marcas","precios":{"2025-2026":17.8,"2026-2027":19.05},"ord":43},"girasol_syn_397_o_nk_3969_180_000_semillas":{"nombre":"Girasol SYN 397 o NK 3969 (180.000 semillas)","categoria":"Semilla","unidad":"Bolsa","obs":"Para girasol sobre girasol por buen comportamiento a enfermedades. Bolsa de 180 mil Semilla. Se puso para Brambilla y Zabala. Cualquiera de los dos son los mejores girasoles del mercado","precios":{"2026-2027":290},"ord":44},"urea_azufrada_38_4_protegida":{"nombre":"Urea Azufrada 38-4  protegida","categoria":"Fertilizante","unidad":"Kgs","obs":"Se calculo 180 kg de urea azufrada (37 % Nitrógeno y 4 % azufre) por hectárea","precios":{"2025-2026":0.585,"2026-2027":0.64},"ord":45},"glifosato_panzar_gold":{"nombre":"Glifosato Panzar Gold","categoria":"Herbicida","unidad":"Lts","obs":"","precios":{"2025-2026":4.2},"ord":46},"bio_verde_sil":{"nombre":"Bio verde Sil","categoria":"Coadyuvante","unidad":"Lts","obs":"","precios":{"2025-2026":30},"ord":47},"banvel":{"nombre":"Banvel","categoria":"","unidad":"","obs":"","precios":{},"ord":48},"karate_zeon":{"nombre":"Karate Zeon","categoria":"","unidad":"","obs":"","precios":{},"ord":49},"haloxifop_54_zavobia":{"nombre":"Haloxifop 54 Zavobia","categoria":"","unidad":"","obs":"","precios":{},"ord":50},"dilfufenican_50":{"nombre":"Dilfufenican 50 %","categoria":"","unidad":"","obs":"","precios":{},"ord":51},"map_con_zinc":{"nombre":"Map con Zinc","categoria":"","unidad":"","obs":"","precios":{},"ord":52},"urea_azufrada_no_protegida":{"nombre":"Urea azufrada no protegida","categoria":"","unidad":"","obs":"","precios":{},"ord":53},"vitracto_pack":{"nombre":"Vitracto Pack","categoria":"","unidad":"","obs":"","precios":{},"ord":54},"quintal_extra":{"nombre":"Quintal Extra","categoria":"","unidad":"","obs":"","precios":{},"ord":55},"elatus_ace":{"nombre":"Elatus Ace","categoria":"","unidad":"","obs":"","precios":{},"ord":56},"miravis_duo":{"nombre":"Miravis Duo","categoria":"","unidad":"","obs":"","precios":{},"ord":57},"sorgo_forrajero_advanta_2650_ig":{"nombre":"Sorgo Forrajero Advanta 2650 IG","categoria":"","unidad":"bolsa","obs":"Girasol Igrow. Se calculó 13 kilos/ha en bolsas de 20 kg cada una","precios":{"2026-2027":89},"ord":58},"axial":{"nombre":"Axial","categoria":"","unidad":"","obs":"","precios":{},"ord":59}},"lotes":{"l01":{"nombre":"Zabala Girasol","has":102,"cultivo":"Girasol","dosis":{"glifosato_granulado_72":3.0,"2_4_d_micro_emulsion_30":2.5,"ampligo_zariva":0.1,"sttager":0.15,"aceite_ttm":0.2,"cletodim_24":0.5,"elevore":0.12,"sulfato_amonio":1.6,"sulfentrazone_50":0.3,"s_metalacloro":1.0,"lambda_al_25":0.05,"girasol_syn_397_o_nk_3969_180_000_semillas":0.32},"ord":0},"l02":{"nombre":"Zabala sorgo Foorajero CL","has":0,"cultivo":"Sorgo","dosis":{"power_plus":6.0,"atrazina_granulada_90":2.0,"2_4_d_micro_emulsion_30":2.5,"clearsol_pack_6_has":0.16,"sulfato_amonio":2.0,"picloran":0.13,"sorgo_forrajero_advanta_2650_ig":0.65},"ord":1},"l03":{"nombre":"Olgado Soja","has":16,"cultivo":"Soja","dosis":{"glifosato_granulado_72":3.5,"aceite_ttm":0.6,"all_ok":0.3,"cletodim_24":1.0,"flumioxazin_48":0.12,"sulfato_amonio":2.0,"glufosinato_amonio_20":4.0,"sulfentrazone_50":0.45,"heat_adjeva":0.035,"2_4_d_enlist":3.0,"ariette":0.2,"s_metalacloro":1.0,"funcion_pack":0.023},"ord":2},"l04":{"nombre":"Cuadrodo Girasol","has":37,"cultivo":"Girasol","dosis":{"glifosato_granulado_72":3.0,"paraquat":2.0,"2_4_d_micro_emulsion_30":2.5,"ampligo_zariva":0.1,"sttager":0.15,"aceite_ttm":0.4,"cletodim_24":0.5,"clearsol_pack_6_has":0.16,"elevore":0.12,"sulfato_amonio":1.6,"sulfentrazone_50":0.3,"s_metalacloro":1.0,"lambda_al_25":0.05,"girasol_brevant_brv4225_cl_g1_150_000_semillas":0.32},"ord":3},"l05":{"nombre":"Brambilla girasol","has":0,"cultivo":"Girasol","dosis":{"glifosato_granulado_72":1.5,"ampligo_zariva":0.1,"sttager":0.15,"aceite_ttm":0.4,"clearsol_pack_6_has":0.16,"sulfato_amonio":1.6,"sulfentrazone_50":0.2,"piroxasulfone_48":0.3,"lambda_al_25":0.05,"girasol_syn_397_o_nk_3969_180_000_semillas":0.32},"ord":4},"l06":{"nombre":"Manasse Maíz","has":59,"cultivo":"Maíz","dosis":{"power_plus":2.0,"atrazina_granulada_90":2.6,"ampligo_zariva":0.1,"aceite_ttm":0.2,"all_ok":0.6,"sulfato_amonio":1.6,"map_monoamonico":80.0,"picloran":0.12,"mesotrione_48":0.3,"urea_azufrada_38_4_protegida":180.0,"s_metalacloro":1.3},"ord":5},"l07":{"nombre":"Don Bonifacio Maíz","has":37,"cultivo":"Maíz","dosis":{"power_plus":2.0,"atrazina_granulada_90":2.6,"ampligo_zariva":0.1,"aceite_ttm":0.2,"all_ok":0.6,"sulfato_amonio":1.6,"map_monoamonico":80.0,"picloran":0.12,"mesotrione_48":0.3,"urea_azufrada_38_4_protegida":180.0,"s_metalacloro":1.3},"ord":6},"l08":{"nombre":"Parra Soja","has":61,"cultivo":"Soja","dosis":{"glifosato_granulado_72":3.5,"aceite_ttm":0.6,"all_ok":0.3,"cletodim_24":1.0,"flumioxazin_48":0.12,"sulfato_amonio":2.0,"glufosinato_amonio_20":4.0,"sulfentrazone_50":0.45,"heat_adjeva":0.035,"2_4_d_enlist":3.0,"ariette":0.2,"s_metalacloro":1.0,"funcion_pack":0.023},"ord":7},"l09":{"nombre":"Moreno Quintas soja","has":57,"cultivo":"Soja","dosis":{"glifosato_granulado_72":3.5,"aceite_ttm":0.6,"all_ok":0.3,"cletodim_24":1.0,"flumioxazin_48":0.12,"sulfato_amonio":2.0,"glufosinato_amonio_20":4.0,"sulfentrazone_50":0.45,"heat_adjeva":0.035,"2_4_d_enlist":3.0,"ariette":0.2,"s_metalacloro":1.0,"funcion_pack":0.023},"ord":8},"l10":{"nombre":"Cuenca Girasol","has":30,"cultivo":"Girasol","dosis":{"glifosato_granulado_72":3.0,"2_4_d_micro_emulsion_30":2.5,"ampligo_zariva":0.1,"sttager":0.15,"aceite_ttm":0.2,"cletodim_24":0.5,"elevore":0.12,"sulfato_amonio":1.6,"sulfentrazone_50":0.3,"s_metalacloro":1.0,"lambda_al_25":0.05,"girasol_syn_397_o_nk_3969_180_000_semillas":0.32},"ord":9},"l11":{"nombre":"Zabala Maíz","has":7,"cultivo":"Maíz","dosis":{"power_plus":2.0,"atrazina_granulada_90":2.6,"ampligo_zariva":0.1,"aceite_ttm":0.2,"all_ok":0.6,"sulfato_amonio":1.6,"map_monoamonico":80.0,"picloran":0.12,"mesotrione_48":0.3,"urea_azufrada_38_4_protegida":180.0,"s_metalacloro":1.3},"ord":10},"l12":{"nombre":"Quinta","has":7,"cultivo":"Soja","dosis":{"glifosato_granulado_72":3.5,"aceite_ttm":0.6,"all_ok":0.3,"cletodim_24":1.0,"flumioxazin_48":0.12,"sulfato_amonio":2.0,"glufosinato_amonio_20":4.0,"sulfentrazone_50":0.45,"heat_adjeva":0.035,"2_4_d_enlist":3.0,"ariette":0.2,"s_metalacloro":1.0,"funcion_pack":0.023},"ord":11}},"dosisCultivo":{"power_plus":{"dosis":{"Maíz":2,"Sorgo":6},"obs":""},"glifosato_granulado_72":{"dosis":{"Girasol":3,"Soja":3.5},"obs":"Girasol: 3 en Zababal/Olgado/Cuadrado, 1,5 en Brambilla. Soja: 7,5 (Manasse) / 3,5 (Moreno Q.) / 3 (Cuenca) — se tomó valor intermedio."},"atrazina_granulada_90":{"dosis":{"Maíz":2.6,"Sorgo":2},"obs":""},"paraquat":{"dosis":{"Girasol":2},"obs":"Solo en Olgado y Cuadrado."},"2_4_d_micro_emulsion_30":{"dosis":{"Girasol":2.5,"Soja":2.5,"Sorgo":2.5},"obs":"Dosis para segundos golpes. En soja solo se usa en Manasse."},"ampligo_zariva":{"dosis":{"Girasol":0.1,"Maíz":0.1},"obs":""},"sttager":{"dosis":{"Girasol":0.15},"obs":""},"aceite_ttm":{"dosis":{"Girasol":0.4,"Soja":0.4,"Maíz":0.2},"obs":"Girasol: 0,2 en Zababal. Soja: 0,6 en Moreno Quintas."},"all_ok":{"dosis":{"Soja":0.3,"Maíz":0.6},"obs":"En soja solo se usa en Moreno Quintas."},"cletodim_24":{"dosis":{"Girasol":0.5,"Soja":0.7},"obs":"Soja: 1,0 en Moreno Quintas."},"flumioxazin_48":{"dosis":{"Soja":0.15},"obs":"0,15 en Manasse y 0,12 en Moreno Quintas; sin uso en Cuenca."},"clearsol_pack_6_has":{"dosis":{"Girasol":0.16,"Sorgo":0.16},"obs":"Pack cada 6 has. Sin Clearsol en Zababal (puede ir a verdeo). En sorgo, solo variedad CL."},"elevore":{"dosis":{"Girasol":0.12},"obs":"Media dosis, para rama negra en rastrojo de maíz de 1°."},"sulfato_amonio":{"dosis":{"Girasol":1.6,"Soja":2,"Maíz":1.6,"Sorgo":2},"obs":""},"glufosinato_amonio_20":{"dosis":{"Soja":1.5},"obs":"4,0 en Moreno Quintas (doble golpe + cierre de surco)."},"sulfentrazone_50":{"dosis":{"Girasol":0.3,"Soja":0.45},"obs":"Girasol: 0,2 en Brambilla."},"map_monoamonico":{"dosis":{"Maíz":80},"obs":""},"heat_adjeva":{"dosis":{"Soja":0.035},"obs":""},"picloran":{"dosis":{"Maíz":0.12,"Sorgo":0.13},"obs":"Usar con glifosatos granulados; con sulfosato puede precipitar."},"2_4_d_enlist":{"dosis":{"Soja":1.5},"obs":"3,0 en Moreno Quintas."},"mesotrione_48":{"dosis":{"Maíz":0.3},"obs":""},"urea_azufrada_38_4_protegida":{"dosis":{"Maíz":180},"obs":"180 kg/ha de urea azufrada (37 % N y 4 % S)."},"ariette":{"dosis":{"Soja":0.2},"obs":""},"s_metalacloro":{"dosis":{"Girasol":1,"Soja":1,"Maíz":1.3},"obs":""},"funcion_pack":{"dosis":{"Soja":0.023},"obs":"Curado e inoculado de soja: 1 caja cada 3.000 kg de semilla, calculado sobre 70 kg/ha."},"piroxasulfone_48":{"dosis":{"Girasol":0.3},"obs":"Solo en Brambilla."},"lambda_al_25":{"dosis":{"Girasol":0.05},"obs":""},"sorgo_forrajero_advanta_2650_ig":{"dosis":{"Sorgo":0.65},"obs":"13 kg/ha en bolsas de 20 kg."},"girasol_syn_397_o_nk_3969_180_000_semillas":{"dosis":{"Girasol":0.32},"obs":"Semilla de girasol — bolsa de 180 mil semillas. Usada en Zababal y Brambilla."},"girasol_brevant_brv4225_cl_g1_150_000_semillas":{"dosis":{"Girasol":0.32},"obs":"Semilla de girasol CL — usada en Olgado y Cuadrado. Alternativa a la anterior: va una u otra, no las dos."}},"cultivos":["Girasol","Soja","Maíz","Sorgo"],"campanas":["2025/2026","2026/2027"],"campBase":"2025/2026","campActual":"2026/2027","tc":1490.5,"stock":{},"comentarios":"Puede llegar a faltar algún insecticida y fungicida para soja, que se va viendo según cómo se presente el año.\nNo puse híbridos de maíz, hay muchos para diferentes situaciones.","campania":"2026-27"};
 let insSub = "lotes";
 let insFil = {cat:"", q:"", todos:false};
 let insLoteAbierto = null;
@@ -1836,10 +1857,27 @@ function insLista(){ const d=insD(); return Object.values(d.insumos).sort((a,b)=
 function insLotes(){ const d=insD(); return Object.entries(d.lotes||{}).map(([id,l])=>Object.assign({id},l)).sort((a,b)=>(a.ord||0)-(b.ord||0)); }
 function insNom(id){ const d=insD(); return d.insumos[id] ? d.insumos[id].nombre : id; }
 function insUni(id){ const d=insD(); return d.insumos[id] ? (d.insumos[id].unidad||"") : ""; }
+/* Las claves de Firebase no admiten / . # $ [ ] → la campaña "2025/2026" se guarda como "2025-2026" */
+function campKey(c){ return String(c||"").replace(/[\/\.#$\[\]]/g,"-"); }
 function insPrecio(id, camp){
   const d=insD(); const it=d.insumos[id]; if(!it||!it.precios) return null;
-  const v=it.precios[camp]; if(v===undefined||v===null||v==="") return null;
+  const v=it.precios[campKey(camp)]; if(v===undefined||v===null||v==="") return null;
   const n=num(v); return n>0? n : null;
+}
+/* repara precios guardados con la clave vieja (anidados "2025":{"2026":v} o "2025/2026") */
+function insReparar(d){
+  if(!d || !d.insumos) return d;
+  for(const id in d.insumos){
+    const p=d.insumos[id].precios; if(!p||typeof p!=="object") continue;
+    const nuevo={}; let cambio=false;
+    for(const k in p){
+      const v=p[k];
+      if(v && typeof v==="object"){ for(const sub in v){ nuevo[campKey(k+"/"+sub)]=v[sub]; } cambio=true; }
+      else { const nk=campKey(k); if(nk!==k) cambio=true; nuevo[nk]=v; }
+    }
+    if(cambio) d.insumos[id].precios=nuevo;
+  }
+  return d;
 }
 /* IVA: fertilizantes 10,5 %, el resto 21 % (se puede fijar por producto en Precios por campaña) */
 function insIva(i){
@@ -2002,7 +2040,7 @@ function insHtmlDosis(){
     h += `<tr><td style="font-weight:700">${ppH(i.nombre)}</td><td>${ppH(i.unidad||"")}</td>`;
     culs.forEach(c=>{
       const v=(dc.dosis||{})[c];
-      h += `<td style="text-align:right"><input type="text" inputmode="decimal" value="${v!==undefined&&v!==""?ppH(v):""}" style="width:70px;text-align:right;padding:5px;color:#0044cc" onchange="insSet('dosisCultivo/${id}/dosis/${ppH(c)}',num(this.value)||'');insRender()"></td>`;
+      h += `<td style="text-align:right"><input type="text" inputmode="decimal" value="${v!==undefined&&v!==""?ppH(v):""}" style="width:70px;text-align:right;padding:5px;color:#0044cc" onchange="insSet('dosisCultivo/${id}/dosis/${campKey(c)}',num(this.value)||'');insRender()"></td>`;
     });
     h += `<td style="text-align:right;background:#eef4fb"><b>${ds>0?insFmQ(ds):""}</b></td>
           <td style="text-align:right;background:#eef4fb"><b>${ds>0&&has>0?insFmQ(ds*has):""}</b></td>
@@ -2069,7 +2107,7 @@ function insHtmlLista(){
       <td style="text-align:right">${cant>0?insFmQ(cant):"<span style='color:var(--gris)'>—</span>"}</td><td>${ppH(i.unidad||"")}</td>
       <td style="text-align:right"><input type="text" inputmode="decimal" value="${st>0?st:""}" style="width:75px;text-align:right;padding:5px" onchange="insSet('stock/${id}',num(this.value)||'');insRender()"></td>
       <td style="text-align:right"><b>${comprar>0?insFmQ(comprar):"—"}</b></td>
-      <td style="text-align:right"><input type="text" inputmode="decimal" value="${p!==null?p:""}" placeholder="—" style="width:80px;text-align:right;padding:5px;color:#0044cc" onchange="insSet('insumos/${id}/precios/${ppH(camp)}',num(this.value)||'');insRender()"></td>
+      <td style="text-align:right"><input type="text" inputmode="decimal" value="${p!==null?p:""}" placeholder="—" style="width:80px;text-align:right;padding:5px;color:#0044cc" onchange="insSet('insumos/${id}/precios/${campKey(camp)}',num(this.value)||'');insRender()"></td>
       <td style="text-align:right">${t!==null?"<b>US$ "+insFm(t)+"</b>":"<span style='color:var(--rojo);font-size:11px'>sin precio</span>"}</td>
       <td style="text-align:right;font-size:11px;color:var(--gris)">${insFm(iva,1)}%</td>
       <td><input type="text" value="${ppH(i.obs||"")}" style="min-width:200px;font-size:12px;padding:5px" onchange="insSet('insumos/${id}/obs',this.value)"></td></tr>`;
@@ -2163,7 +2201,7 @@ function insHtmlPrecios(){
       <td><input type="text" value="${ppH(i.nombre)}" style="min-width:220px;font-weight:700;padding:5px" onchange="insSet('insumos/${id}/nombre',this.value);insRender()"></td>
       <td><input type="text" value="${ppH(i.unidad||"")}" list="insUniList" style="width:70px;font-size:12px;padding:5px" onchange="insSet('insumos/${id}/unidad',this.value)"></td>`;
     camps.forEach(c=>{ const p=insPrecio(id,c);
-      h += `<td style="text-align:right"><input type="text" inputmode="decimal" value="${p!==null?p:""}" style="width:80px;text-align:right;padding:5px;color:#0044cc" onchange="insSet('insumos/${id}/precios/${ppH(c)}',num(this.value)||'');insRender()"></td>`; });
+      h += `<td style="text-align:right"><input type="text" inputmode="decimal" value="${p!==null?p:""}" style="width:80px;text-align:right;padding:5px;color:#0044cc" onchange="insSet('insumos/${id}/precios/${campKey(c)}',num(this.value)||'');insRender()"></td>`; });
     h += `<td style="text-align:right;font-weight:800;color:${col(vv)}">${pv(vv)}</td>
       <td style="text-align:right"><input type="text" inputmode="decimal" value="${i.iva!==undefined&&i.iva!==""?ppH(i.iva):""}" placeholder="${insFm(insIva(i),1)}" title="Vacío = según categoría (fertilizante 10,5 %, resto 21 %)" style="width:60px;text-align:right;padding:5px;font-size:12px" onchange="insSet('insumos/${id}/iva',this.value.trim()===''?'':num(this.value));insRender()"></td>
       <td><input type="text" value="${ppH(i.obs||"")}" style="min-width:160px;font-size:12px;padding:5px" onchange="insSet('insumos/${id}/obs',this.value)"></td>
@@ -2250,6 +2288,355 @@ function aplicarVarInsumos(){
   S.params.varInsumosAplicado = "+"+insFm(aum)+"% aplicado el "+HOY();
   guardar(); pintarCultivosParam(); pintarVarInsumos(); calc();
   toast("✔ % de gastos actualizados con el aumento de insumos");
+}
+
+/* ============================================================
+   COMPARATIVO (sensibilidad rinde × arrendamiento) y PRECONTRATO
+   Datos en S.cmp (comparativo) y S.pre (precontrato)
+   ============================================================ */
+let cmpSub = "sens";
+
+/* cálculo agrícola puro: cultivo, has, rinde, arrendamiento en unidades/ha */
+function agriCalcPuro(cultivo, has, rinde, unidHa, tipoArr){
+  const c = S.params.cultivos[cultivo] || {pctCon:0,pctSin:0,precioTn:0,moneda:"ARS"};
+  const kg = has*rinde, tn = kg/1000;
+  const tcC = num(S.params.tcCompra), tcV = num(S.params.tcVenta);
+  let precioKg = num(c.precioTn)/1000;
+  if(c.moneda==="USD") precioKg = num(c.precioTn)*tcC/1000;
+  const ventas = kg*precioKg;
+  const usd=num(S.agComUsd), ars=num(S.agComArs), pctc=num(S.agComPct);
+  const hayCom = (usd>0 || ars>0 || pctc>0);
+  const comerc = usd*tn*tcV + ars*tn + ventas*pctc/100;
+  const pct = hayCom? num(c.pctSin) : num(c.pctCon);
+  const gastos = ventas*pct/100;
+  const esSoja = (tipoArr||S.arrTipo)==="SOJA_QQ";
+  const pArr = esSoja? num(S.arrPrecioSoja) : num(S.arrPrecioNov);
+  const arr = has*num(unidHa)*pArr;
+  const resultado = ventas - gastos - comerc - arr;
+  // punto de equilibrio: qq máx a pagar con este rinde, y rinde mínimo con este arrendamiento
+  const cu = (usd*tcV + ars)/1000;                       // $ por kg de comercialización fija
+  const netoKg = precioKg*(1 - pct/100 - pctc/100) - cu;  // $ netos por kg antes del arrendamiento
+  const qqMax = (has>0 && pArr>0)? (ventas - gastos - comerc)/(has*pArr) : null;
+  const rindeMin = (netoKg>0 && has>0)? arr/(netoKg*has) : null;
+  return {has, rinde, kg, precioKg, ventas, gastos, comerc, pct, hayCom, arr, pArr, esSoja, resultado,
+          margenHa: has>0? resultado/has : 0, margenPct: ventas>0? resultado/ventas*100 : 0, qqMax, rindeMin,
+          faltaPrecio: !(precioKg>0), faltaArr: !(pArr>0)};
+}
+
+function cmpD(){
+  if(!S.cmp) S.cmp = {cultivo:"", has:"", rDesde:"", rHasta:"", rPaso:"", qDesde:"", qHasta:"", qPaso:"", modo:"matriz"};
+  if(!S.pre) S.pre = {arrendador:"", arrendatario:"Osvaldo Gustavo Solsona (EL MESTIZO)", campo:"", has:"", campania:"", cultivo:"", unidad:"SOJA_QQ", tramos:{}, fecha:"", vigencia:"", lugar:"", obs:"", plazoPago:""};
+  return S;
+}
+function cmpVer(sub){
+  cmpSub = sub;
+  document.querySelectorAll("#vCmp .subnav button").forEach(b=>b.classList.toggle("activo", b.dataset.s===sub));
+  cmpRender();
+}
+function cmpRender(){
+  const cont = document.getElementById("cmpCuerpo"); if(!cont) return;
+  cmpD();
+  cont.innerHTML = cmpSub==="sens" ? cmpHtmlSens() : cmpHtmlPre();
+}
+function cmpSet(obj, k, v){ obj[k]=v; guardar(); cmpRender(); }
+function cmpSerie(desde, hasta, paso){
+  const a=num(desde), b=num(hasta), p=num(paso);
+  if(!(a>0) || !(p>0)) return [];
+  const out=[]; const fin = b>=a? b : a;
+  for(let x=a; x<=fin+1e-9 && out.length<25; x+=p) out.push(Math.round(x*1000)/1000);
+  return out;
+}
+function cmpFmtCel(v){ return (v<0?"−":"")+"$ "+Math.abs(Math.round(v)).toLocaleString("es-AR"); }
+function cmpColor(v){ return v>0? "#d9f2dd" : v<0? "#f9dcdc" : "#fff8e1"; }
+
+/* ---------- SENSIBILIDAD ---------- */
+function cmpHtmlSens(){
+  const c=S.cmp, culs=Object.keys(S.params.cultivos||{});
+  if(!c.cultivo) c.cultivo = culs[0]||"";
+  const esSoja = S.arrTipo==="SOJA_QQ";
+  const uni = esSoja? "qq soja/ha" : "kg novillo/ha";
+  const rindes = cmpSerie(c.rDesde, c.rHasta, c.rPaso);
+  const qqs = cmpSerie(c.qDesde, c.qHasta, c.qPaso);
+  const has = num(c.has);
+  const cc = S.params.cultivos[c.cultivo]||{};
+  const ref = agriCalcPuro(c.cultivo, has||1, rindes[0]||0, qqs[0]||0);
+  let h = `<div class="tarjeta">
+    <h3 class="tit">📐 Comparativo rinde × arrendamiento</h3>
+    <p class="sub" style="margin-bottom:8px">Cargá un rango de rindes y un rango de arrendamientos: la tabla muestra el margen de cada combinación. Usa el precio del cereal, los % de gastos, la comercialización y el precio de ${esSoja?"soja":"novillo"} que están cargados en el Simulador y en Parámetros.</p>
+    <div class="fila3">
+      <div class="campo-form"><label>Cultivo</label><select onchange="cmpSet(S.cmp,'cultivo',this.value)">${insOpts(culs, c.cultivo)}</select></div>
+      <div class="campo-form"><label>Has</label><input type="text" inputmode="decimal" value="${ppH(c.has)}" onchange="cmpSet(S.cmp,'has',this.value)"></div>
+      <div class="campo-form"><label>Arrendamiento en</label><select onchange="S.arrTipo=this.value;guardar();pintarArr();cmpRender()"><option value="SOJA_QQ" ${esSoja?"selected":""}>qq de soja / ha</option><option value="NOVILLO_KG" ${!esSoja?"selected":""}>kg de novillo / ha</option></select></div>
+    </div>
+    <div class="fila3">
+      <div class="campo-form"><label>Rinde desde (kg/ha)</label><input type="text" inputmode="decimal" value="${ppH(c.rDesde)}" placeholder="Ej: 4000" onchange="cmpSet(S.cmp,'rDesde',this.value)"></div>
+      <div class="campo-form"><label>Rinde hasta</label><input type="text" inputmode="decimal" value="${ppH(c.rHasta)}" placeholder="Ej: 9000" onchange="cmpSet(S.cmp,'rHasta',this.value)"></div>
+      <div class="campo-form"><label>Paso</label><input type="text" inputmode="decimal" value="${ppH(c.rPaso)}" placeholder="Ej: 1000" onchange="cmpSet(S.cmp,'rPaso',this.value)"></div>
+    </div>
+    <div class="fila3">
+      <div class="campo-form"><label>Arrendamiento desde (${uni})</label><input type="text" inputmode="decimal" value="${ppH(c.qDesde)}" placeholder="Ej: 6" onchange="cmpSet(S.cmp,'qDesde',this.value)"></div>
+      <div class="campo-form"><label>Hasta</label><input type="text" inputmode="decimal" value="${ppH(c.qHasta)}" placeholder="Ej: 14" onchange="cmpSet(S.cmp,'qHasta',this.value)"></div>
+      <div class="campo-form"><label>Paso</label><input type="text" inputmode="decimal" value="${ppH(c.qPaso)}" placeholder="Ej: 2" onchange="cmpSet(S.cmp,'qPaso',this.value)"></div>
+    </div>
+    <div class="aviso">Referencias en uso: precio ${ppH(c.cultivo)} <b>${num(cc.precioTn)>0? (cc.moneda==="USD"?"USD ":"$ ")+fm2(num(cc.precioTn))+"/tn":"<span style='color:var(--rojo)'>sin cargar</span>"}</b>
+      · gastos <b>${fm2(ref.pct)}%</b> (${ref.hayCom?"SIN gtos com. + comercialización aparte":"CON gtos com."})
+      · ${esSoja?"soja":"novillo"} <b>${ref.pArr>0? "$ "+fm2(ref.pArr)+(esSoja?"/qq":"/kg") : "<span style='color:var(--rojo)'>sin cargar</span>"}</b>
+      ${ref.faltaPrecio||ref.faltaArr? "<br>⚠ Cargá lo que falta en Simulador / Parámetros para que el comparativo tenga sentido." : ""}</div>
+  </div>`;
+  if(!rindes.length || !qqs.length || !(has>0)){
+    h += `<div class="tarjeta"><p class="sub" style="margin:0">Cargá has, el rango de rindes y el rango de arrendamiento (desde / hasta / paso) para ver la tabla. Para comparar un solo arrendamiento con varios rindes, poné el mismo valor en "desde" y "hasta".</p></div>`;
+    return h;
+  }
+  h += `<div class="tarjeta">
+    <h3 class="tit">💰 Margen por hectárea — ${ppH(c.cultivo)} · ${fm2(has)} has</h3>
+    <p class="sub" style="margin-bottom:8px">Filas: rinde. Columnas: arrendamiento en ${uni}. En cada celda: margen $/ha y, abajo, margen total y % sobre ventas. Última columna: el máximo de ${uni} que se puede pagar con ese rinde sin perder.</p>
+    <div class="pp-scroll"><table class="pp-tab" style="min-width:0"><thead><tr><th>Rinde kg/ha</th>${qqs.map(q=>`<th style="text-align:right">${fm2(q)} ${esSoja?"qq":"kg"}</th>`).join("")}<th style="text-align:right;background:#0d2c54">Máx. a pagar</th></tr></thead><tbody>`;
+  rindes.forEach(r=>{
+    h += `<tr><td style="font-weight:800;white-space:nowrap">${fm2(r)}</td>`;
+    let qqMax=null;
+    qqs.forEach(q=>{
+      const x=agriCalcPuro(c.cultivo, has, r, q); qqMax=x.qqMax;
+      h += `<td style="text-align:right;background:${cmpColor(x.resultado)};white-space:nowrap"><b>${cmpFmtCel(x.margenHa)}</b><br><small style="color:var(--gris)">${cmpFmtCel(x.resultado)} · ${fm2(x.margenPct)}%</small></td>`;
+    });
+    h += `<td style="text-align:right;font-weight:800;background:#eef4fb;white-space:nowrap">${qqMax!==null? fm2(qqMax)+" "+(esSoja?"qq":"kg") : "—"}</td></tr>`;
+  });
+  // fila: rinde mínimo por columna
+  h += `<tr><td style="font-weight:800;background:#eef4fb">Rinde mín.</td>`;
+  qqs.forEach(q=>{ const x=agriCalcPuro(c.cultivo, has, rindes[0], q);
+    h += `<td style="text-align:right;font-weight:800;background:#eef4fb;white-space:nowrap">${x.rindeMin!==null? fm2(Math.round(x.rindeMin))+" kg" : "—"}</td>`; });
+  h += `<td style="background:#eef4fb"></td></tr></tbody></table></div>
+    <div class="aviso">Verde: ganancia · Rojo: pérdida. "Rinde mín." es el rinde a partir del cual ese arrendamiento deja margen positivo.</div>
+    <button class="btn" style="margin-top:12px" id="btPdfCmp" onclick="cmpPDF()">📄 Ver PDF comparativo</button>
+  </div>`;
+  return h;
+}
+
+async function cmpPDF(){
+  const c=S.cmp, has=num(c.has);
+  const rindes=cmpSerie(c.rDesde,c.rHasta,c.rPaso), qqs=cmpSerie(c.qDesde,c.qHasta,c.qPaso);
+  if(!rindes.length||!qqs.length||!(has>0)){ toast("Completá has y los rangos primero"); return; }
+  const bt=document.getElementById("btPdfCmp"); if(bt){ bt.innerHTML='<span class="spin">⏳</span> Armando PDF…'; bt.disabled=true; }
+  try{
+    await cargarJsPDF();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:"mm", format:"a4", orientation:"landscape"});
+    const W=297, MI=12, MD=285;
+    const esSoja=S.arrTipo==="SOJA_QQ", uni=esSoja?"qq soja/ha":"kg novillo/ha";
+    const cc=S.params.cultivos[c.cultivo]||{};
+    const ref=agriCalcPuro(c.cultivo, has, rindes[0], qqs[0]);
+    let y = ppMembrete(doc, W, MI, MD, "Comparativo rinde x arrendamiento", sinEmoji((S.nombreCampo? S.nombreCampo+" · ":"")+c.cultivo+" · "+fm2(has)+" has"));
+    doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(95,112,132);
+    const refs = "Generado el "+HOY()+"  ·  Precio "+c.cultivo+": "+(cc.moneda==="USD"?"USD ":"$ ")+fm2(num(cc.precioTn))+"/tn"
+      +"  ·  Gastos "+fm2(ref.pct)+"% s/ventas ("+(ref.hayCom?"sin gtos com. + comercializacion aparte":"con gtos com.")+")"
+      +"  ·  "+(esSoja?"Soja $ "+fm2(ref.pArr)+"/qq":"Novillo $ "+fm2(ref.pArr)+"/kg")
+      +(num(S.params.tcCompra)>0?"  ·  TC $ "+fm2(num(S.params.tcCompra)):"");
+    doc.splitTextToSize(sinEmoji(refs), MD-MI).forEach(l=>{ doc.text(l, MI, y); y+=3.8; });
+    y+=3;
+    // tabla
+    const nCols = qqs.length+2;
+    const w0=26, wLast=24, wc=(MD-MI-w0-wLast)/qqs.length;
+    const altoF = 9.5;
+    const cab = ()=>{
+      doc.setFillColor(21,101,192); doc.rect(MI, y-4.5, MD-MI, 7, "F");
+      doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(8);
+      doc.text("Rinde kg/ha", MI+1.5, y);
+      qqs.forEach((q,i)=> doc.text(fm2(q)+" "+(esSoja?"qq":"kg"), MI+w0+wc*(i+1)-1.5, y, {align:"right"}));
+      doc.text("Max. a pagar", MD-1.5, y, {align:"right"});
+      y += 5.5;
+    };
+    cab();
+    rindes.forEach(r=>{
+      if(y+altoF>195){ doc.addPage(); y=16; cab(); }
+      doc.setTextColor(20,32,46); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
+      doc.text(fm2(r), MI+1.5, y+1);
+      let qqMax=null;
+      qqs.forEach((q,i)=>{
+        const x=agriCalcPuro(c.cultivo, has, r, q); qqMax=x.qqMax;
+        const col = x.resultado>0? [217,242,221] : x.resultado<0? [249,220,220] : [255,248,225];
+        doc.setFillColor(col[0],col[1],col[2]); doc.rect(MI+w0+wc*i, y-3.5, wc, altoF-0.5, "F");
+        doc.setTextColor(20,32,46); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
+        doc.text(cmpFmtCel(x.margenHa).replace("−","-")+"/ha", MI+w0+wc*(i+1)-1.5, y+0.5, {align:"right"});
+        doc.setFont("helvetica","normal"); doc.setFontSize(6.5); doc.setTextColor(95,112,132);
+        doc.text(cmpFmtCel(x.resultado).replace("−","-")+"  ·  "+fm2(x.margenPct)+"%", MI+w0+wc*(i+1)-1.5, y+4, {align:"right"});
+      });
+      doc.setFillColor(238,244,251); doc.rect(MI+w0+wc*qqs.length, y-3.5, wLast, altoF-0.5, "F");
+      doc.setTextColor(20,32,46); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
+      doc.text(qqMax!==null? fm2(qqMax)+" "+(esSoja?"qq":"kg") : "-", MD-1.5, y+1, {align:"right"});
+      y += altoF;
+    });
+    // rinde mínimo
+    doc.setFillColor(238,244,251); doc.rect(MI, y-3.5, MD-MI, 7, "F");
+    doc.setTextColor(20,32,46); doc.setFont("helvetica","bold"); doc.setFontSize(8);
+    doc.text("Rinde min.", MI+1.5, y+1);
+    qqs.forEach((q,i)=>{ const x=agriCalcPuro(c.cultivo, has, rindes[0], q);
+      doc.text(x.rindeMin!==null? fm2(Math.round(x.rindeMin))+" kg" : "-", MI+w0+wc*(i+1)-1.5, y+1, {align:"right"}); });
+    y += 9;
+    doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(95,112,132);
+    doc.text("En cada celda: margen $/ha (arriba), margen total y % sobre ventas (abajo). Verde: ganancia. Rojo: perdida. \"Max. a pagar\": arrendamiento maximo en "+uni+" con ese rinde para no perder. \"Rinde min.\": rinde a partir del cual ese arrendamiento deja margen positivo.", MI, y, {maxWidth: MD-MI});
+    const nombre="comparativo_"+(S.nombreCampo? S.nombreCampo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"_").slice(0,25)+"_":"")+c.cultivo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")+"_"+HOY().replace(/\//g,"-")+".pdf";
+    await verPDF(doc, nombre, "Comparativo rinde × arrendamiento", "Comparativo "+c.cultivo+(S.nombreCampo?" · "+S.nombreCampo:"")+" · "+fm2(has)+" has");
+  }catch(e){ if(e && e.name!=="AbortError") toast("No se pudo armar el PDF: "+(e.message||e)); }
+  if(bt){ bt.innerHTML="📄 Ver PDF comparativo"; bt.disabled=false; }
+}
+
+/* ---------- PRECONTRATO ---------- */
+function preTramos(){ const p=S.pre; return Object.entries(p.tramos||{}).map(([id,t])=>Object.assign({id},t)).sort((a,b)=>num(a.rinde)-num(b.rinde)); }
+function cmpHtmlPre(){
+  const p=S.pre, culs=Object.keys(S.params.cultivos||{});
+  const esSoja = p.unidad!=="NOVILLO_KG";
+  const uni = esSoja? "qq de soja/ha" : "kg de novillo/ha";
+  const tr = preTramos();
+  const pRef = esSoja? num(S.arrPrecioSoja) : num(S.arrPrecioNov);
+  let h = `<div class="tarjeta">
+    <h3 class="tit">📝 Precontrato de arrendamiento — esquema por rinde</h3>
+    <p class="sub" style="margin-bottom:8px">Se arma la escalera "si el rinde es de X kg/ha, el arrendamiento es de Y ${uni}" para presentarle a la otra parte. Sale en PDF con membrete y firmas.</p>
+    <div class="fila2">
+      <div class="campo-form"><label>Arrendador (dueño del campo / firma)</label><input type="text" value="${ppH(p.arrendador)}" placeholder="Ej: Sucesión Pérez S.A." onchange="cmpSet(S.pre,'arrendador',this.value)"></div>
+      <div class="campo-form"><label>Arrendatario</label><input type="text" value="${ppH(p.arrendatario)}" onchange="cmpSet(S.pre,'arrendatario',this.value)"></div>
+    </div>
+    <div class="fila3">
+      <div class="campo-form"><label>Campo</label><input type="text" value="${ppH(p.campo)}" placeholder="${ppH(S.nombreCampo||"Nombre / ubicación")}" onchange="cmpSet(S.pre,'campo',this.value)"></div>
+      <div class="campo-form"><label>Has</label><input type="text" inputmode="decimal" value="${ppH(p.has)}" onchange="cmpSet(S.pre,'has',this.value)"></div>
+      <div class="campo-form"><label>Campaña</label><input type="text" value="${ppH(p.campania)}" placeholder="Ej: 2026/27" onchange="cmpSet(S.pre,'campania',this.value)"></div>
+    </div>
+    <div class="fila3">
+      <div class="campo-form"><label>Cultivo</label><input type="text" value="${ppH(p.cultivo)}" list="preCulList" placeholder="Ej: Maíz" onchange="cmpSet(S.pre,'cultivo',this.value)"><datalist id="preCulList">${culs.map(c=>`<option value="${ppH(c)}">`).join("")}</datalist></div>
+      <div class="campo-form"><label>Arrendamiento en</label><select onchange="cmpSet(S.pre,'unidad',this.value)"><option value="SOJA_QQ" ${esSoja?"selected":""}>qq de soja / ha</option><option value="NOVILLO_KG" ${!esSoja?"selected":""}>kg de novillo / ha</option></select></div>
+      <div class="campo-form"><label>Fecha de pago / plazo</label><input type="text" value="${ppH(p.plazoPago)}" placeholder="Ej: a cosecha, 30 días de cosechado" onchange="cmpSet(S.pre,'plazoPago',this.value)"></div>
+    </div>
+    <div class="fila3">
+      <div class="campo-form"><label>Lugar</label><input type="text" value="${ppH(p.lugar)}" placeholder="Ej: Bragado" onchange="cmpSet(S.pre,'lugar',this.value)"></div>
+      <div class="campo-form"><label>Fecha</label><input type="text" value="${ppH(p.fecha)}" placeholder="${HOY()}" onchange="cmpSet(S.pre,'fecha',this.value)"></div>
+      <div class="campo-form"><label>Vigencia / validez de la propuesta</label><input type="text" value="${ppH(p.vigencia)}" placeholder="Ej: 15 días" onchange="cmpSet(S.pre,'vigencia',this.value)"></div>
+    </div>
+    <div class="campo-form"><label>Condiciones / observaciones (una por renglón)</label>
+      <textarea rows="4" style="width:100%;padding:10px;border:1px solid var(--gris-cl);border-radius:10px;font-family:inherit;font-size:14px" placeholder="Ej: El rinde se determinará por pesadas de báscula y/o tickets de entrega.&#10;Precio de la soja: pizarra Rosario del día de pago." onchange="cmpSet(S.pre,'obs',this.value)">${ppH(p.obs)}</textarea></div>
+  </div>
+  <div class="tarjeta">
+    <h3 class="tit">📊 Escalera de rinde → arrendamiento</h3>
+    <div class="fila3" style="background:#f4f8fd;border:1px dashed var(--gris-cl);border-radius:10px;padding:10px;margin-bottom:10px">
+      <div class="campo-form" style="margin:0"><label>Rinde (kg/ha)</label><input type="text" inputmode="decimal" id="pre_r" placeholder="Ej: 6000"></div>
+      <div class="campo-form" style="margin:0"><label>Arrendamiento (${uni})</label><input type="text" inputmode="decimal" id="pre_q" placeholder="Ej: 10"></div>
+      <div class="campo-form" style="margin:0"><label>&nbsp;</label><button class="btn peq" style="width:100%" onclick="preTramoNuevo()">＋ Agregar tramo</button></div>
+    </div>
+    <details style="margin-bottom:10px"><summary style="cursor:pointer;font-size:13px;color:var(--verde);font-weight:700">Generar tramos automáticamente</summary>
+      <div class="fila3" style="margin-top:8px">
+        <div class="campo-form"><label>Rinde desde</label><input type="text" inputmode="decimal" id="pre_gr1" placeholder="4000"></div>
+        <div class="campo-form"><label>Rinde hasta</label><input type="text" inputmode="decimal" id="pre_gr2" placeholder="10000"></div>
+        <div class="campo-form"><label>Paso rinde</label><input type="text" inputmode="decimal" id="pre_grp" placeholder="1000"></div>
+        <div class="campo-form"><label>Arrendamiento inicial</label><input type="text" inputmode="decimal" id="pre_gq1" placeholder="6"></div>
+        <div class="campo-form"><label>Suma por tramo</label><input type="text" inputmode="decimal" id="pre_gqp" placeholder="1.5"></div>
+        <div class="campo-form"><label>&nbsp;</label><button class="btn peq sec" style="width:100%" onclick="preGenerar()">Generar (reemplaza)</button></div>
+      </div></details>
+    ${tr.length? `<div class="pp-scroll"><table class="pp-tab" style="min-width:0"><thead><tr><th>Tramo</th><th>Si el rinde de ${ppH(p.cultivo||"cultivo")} es</th><th style="text-align:right">Arrendamiento</th><th style="text-align:right">Total (${fm2(num(p.has))} has)</th><th style="text-align:right">Ref. $ hoy</th><th></th></tr></thead><tbody>
+      ${tr.map((t,i)=>{ const sig=tr[i+1]; const has=num(p.has);
+        const rango = i===0? "hasta "+fm2(num(t.rinde))+" kg/ha" : (sig? "de "+fm2(num(tr[i-1].rinde)+1)+" a "+fm2(num(t.rinde))+" kg/ha" : "más de "+fm2(num(tr[i-1].rinde))+" kg/ha");
+        return `<tr><td>${i+1}</td><td>${rango}</td>
+          <td style="text-align:right"><input type="text" inputmode="decimal" value="${ppH(t.qq)}" style="width:80px;text-align:right;padding:5px;font-weight:700" onchange="S.pre.tramos['${t.id}'].qq=num(this.value);guardar();cmpRender()"> ${esSoja?"qq/ha":"kg/ha"}</td>
+          <td style="text-align:right">${has>0? fm2(num(t.qq)*has)+(esSoja?" qq":" kg"):"—"}</td>
+          <td style="text-align:right;color:var(--gris)">${pRef>0&&has>0? fm(num(t.qq)*has*pRef):"—"}</td>
+          <td><button class="pp-ico" onclick="delete S.pre.tramos['${t.id}'];guardar();cmpRender()">✕</button></td></tr>`; }).join("")}
+      </tbody></table></div>
+      <div class="aviso">Los tramos se ordenan solos por rinde. El primer tramo cubre "hasta" ese rinde y el último "más de" el rinde anterior. La columna "Ref. $ hoy" es solo orientativa (${esSoja?"soja $ "+fm2(pRef)+"/qq":"novillo $ "+fm2(pRef)+"/kg"} cargado en el Simulador) y NO sale en el precontrato.</div>
+      <button class="btn" style="margin-top:12px" id="btPdfPre" onclick="prePDF()">📄 Ver PDF precontrato</button>`
+    : `<p class="sub" style="margin:0">Todavía no hay tramos. Agregá uno por uno o generalos automáticamente.</p>`}
+  </div>`;
+  return h;
+}
+function preTramoNuevo(){
+  const r=num(document.getElementById("pre_r").value), q=num(document.getElementById("pre_q").value);
+  if(!(r>0)||!(q>0)){ toast("Cargá rinde y arrendamiento"); return; }
+  S.pre.tramos = S.pre.tramos||{};
+  S.pre.tramos["t"+Date.now().toString(36)] = {rinde:r, qq:q};
+  guardar(); cmpRender();
+}
+function preGenerar(){
+  const r1=num(document.getElementById("pre_gr1").value), r2=num(document.getElementById("pre_gr2").value), rp=num(document.getElementById("pre_grp").value);
+  const q1=num(document.getElementById("pre_gq1").value), qp=num(document.getElementById("pre_gqp").value);
+  if(!(r1>0)||!(rp>0)||!(q1>0)){ toast("Completá rinde desde/hasta/paso y arrendamiento inicial"); return; }
+  if(Object.keys(S.pre.tramos||{}).length && !confirm("Se reemplazan los tramos actuales. ¿Seguir?")) return;
+  S.pre.tramos={}; let q=q1, n=0;
+  for(let r=r1; r<=Math.max(r1,r2)+1e-9 && n<20; r+=rp, q+=qp, n++) S.pre.tramos["t"+n]={rinde:Math.round(r), qq:Math.round(q*100)/100};
+  guardar(); cmpRender(); toast("✔ "+n+" tramos generados");
+}
+async function prePDF(){
+  const p=S.pre, tr=preTramos();
+  if(!tr.length){ toast("Cargá al menos un tramo"); return; }
+  const bt=document.getElementById("btPdfPre"); if(bt){ bt.innerHTML='<span class="spin">⏳</span> Armando PDF…'; bt.disabled=true; }
+  try{
+    await cargarJsPDF();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:"mm", format:"a4"});
+    const W=210, MI=18, MD=192;
+    const esSoja = p.unidad!=="NOVILLO_KG", uni = esSoja? "quintales de soja por hectárea" : "kilos de novillo por hectárea", uniC = esSoja? "qq soja/ha" : "kg novillo/ha";
+    const has=num(p.has);
+    let y = ppMembrete(doc, W, MI, MD, "Propuesta de precontrato", "Arrendamiento campaña "+sinEmoji(p.campania||""));
+    y += 2;
+    doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(13,44,84);
+    doc.text("PROPUESTA DE PRECONTRATO DE ARRENDAMIENTO RURAL", W/2, y, {align:"center"}); y+=8;
+    // datos
+    const datos = [["Arrendador", p.arrendador||"____________________"], ["Arrendatario", p.arrendatario||"____________________"],
+      ["Campo", (p.campo||S.nombreCampo||"____________________")], ["Superficie", has>0? fm2(has)+" hectáreas" : "________ hectáreas"],
+      ["Campaña", p.campania||"________"], ["Cultivo", p.cultivo||"________"], ["Forma de pago", "Arrendamiento variable según rinde, expresado en "+uni],
+      ["Plazo de pago", p.plazoPago||"a convenir"]];
+    doc.setFontSize(10);
+    datos.forEach(([k,v])=>{
+      doc.setFont("helvetica","bold"); doc.setTextColor(95,112,132); doc.text(k+":", MI, y);
+      doc.setFont("helvetica","normal"); doc.setTextColor(20,32,46);
+      const ls=doc.splitTextToSize(sinEmoji(String(v)), MD-MI-38); ls.forEach((l,i)=>doc.text(l, MI+38, y+i*4.5)); y += 4.5*ls.length+1.5;
+    });
+    y += 4;
+    doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.setTextColor(21,101,192);
+    doc.text("Esquema de arrendamiento según rinde de "+sinEmoji(p.cultivo||"cultivo"), MI, y); y+=6;
+    // tabla
+    const cols=[{t:"Tramo",w:16},{t:"Si el rinde de "+sinEmoji(p.cultivo||"cultivo")+" es",w:78},{t:"Arrendamiento ("+uniC+")",w:44},{t:has>0?"Total s/ "+fm2(has)+" has":"Total",w:36}];
+    let x=MI;
+    doc.setFillColor(21,101,192); doc.rect(MI, y-4.5, MD-MI, 7, "F");
+    doc.setTextColor(255,255,255); doc.setFontSize(8.5);
+    cols.forEach(c=>{ doc.text(c.t, x+1.5, y); x+=c.w; }); y+=5;
+    doc.setTextColor(20,32,46); doc.setFontSize(10);
+    tr.forEach((t,i)=>{
+      const sig=tr[i+1];
+      const rango = i===0? "hasta "+fm2(num(t.rinde))+" kg/ha" : (sig? "de "+fm2(num(tr[i-1].rinde)+1)+" a "+fm2(num(t.rinde))+" kg/ha" : "más de "+fm2(num(tr[i-1].rinde))+" kg/ha");
+      if(i%2) { doc.setFillColor(244,248,253); doc.rect(MI, y-4, MD-MI, 7.5, "F"); }
+      x=MI;
+      doc.setFont("helvetica","normal"); doc.text(String(i+1), x+1.5, y+1); x+=cols[0].w;
+      doc.text(rango, x+1.5, y+1); x+=cols[1].w;
+      doc.setFont("helvetica","bold"); doc.text(fm2(num(t.qq))+" "+(esSoja?"qq/ha":"kg/ha"), x+cols[2].w-1.5, y+1, {align:"right"}); x+=cols[2].w;
+      doc.setFont("helvetica","normal"); doc.text(has>0? fm2(num(t.qq)*has)+(esSoja?" qq":" kg"):"-", x+cols[3].w-1.5, y+1, {align:"right"});
+      y+=7.5;
+      if(y>250){ doc.addPage(); y=20; }
+    });
+    y+=4;
+    doc.setDrawColor(189,211,236); doc.line(MI,y,MD,y); y+=7;
+    // condiciones
+    doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(21,101,192);
+    doc.text("Condiciones", MI, y); y+=5.5;
+    doc.setFont("helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(20,32,46);
+    const conds = [
+      "El arrendamiento se pagará en "+uni+", según el tramo de rinde que corresponda al rinde promedio obtenido en el campo en la campaña indicada."+(esSoja?" Los quintales se valorizarán al precio de pizarra de la soja (Cámara Arbitral de Rosario) del día de pago, salvo acuerdo distinto entre las partes.":""),
+    ].concat(String(p.obs||"").split("\n").map(s=>s.trim()).filter(Boolean));
+    if(p.vigencia) conds.push("La presente propuesta tiene una validez de "+p.vigencia+".");
+    conds.push("Esta propuesta es un esquema preliminar sujeto a la firma del contrato definitivo.");
+    conds.forEach((t,i)=>{
+      const ls=doc.splitTextToSize((i+1)+". "+sinEmoji(t), MD-MI-4);
+      if(y+ls.length*4.5>262){ doc.addPage(); y=20; }
+      ls.forEach(l=>{ doc.text(l, MI+2, y); y+=4.5; }); y+=1.5;
+    });
+    // firmas
+    if(y>235){ doc.addPage(); y=30; } else y=Math.max(y+14, 240);
+    doc.setFontSize(9.5); doc.setTextColor(20,32,46);
+    doc.text(sinEmoji((p.lugar? p.lugar+", " : "")+(p.fecha||HOY())), MI, y); y+=18;
+    doc.setDrawColor(20,32,46);
+    doc.line(MI+5, y, MI+75, y); doc.line(MD-75, y, MD-5, y); y+=4.5;
+    doc.setFontSize(8.5); doc.setTextColor(95,112,132);
+    doc.text("Arrendador", MI+40, y, {align:"center"}); doc.text("Arrendatario", MD-40, y, {align:"center"}); y+=4;
+    doc.setFontSize(8);
+    doc.text(sinEmoji(p.arrendador||""), MI+40, y, {align:"center", maxWidth:70}); doc.text(sinEmoji(p.arrendatario||""), MD-40, y, {align:"center", maxWidth:70});
+    const nombre="precontrato_"+(p.campo||S.nombreCampo||"campo").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"_").slice(0,25)+"_"+HOY().replace(/\//g,"-")+".pdf";
+    await verPDF(doc, nombre, "Propuesta de precontrato", "Propuesta de precontrato de arrendamiento"+(p.campo||S.nombreCampo?" · "+(p.campo||S.nombreCampo):"")+(p.campania?" · campaña "+p.campania:""));
+  }catch(e){ if(e && e.name!=="AbortError") toast("No se pudo armar el PDF: "+(e.message||e)); }
+  if(bt){ bt.innerHTML="📄 Ver PDF precontrato"; bt.disabled=false; }
 }
 
 /* ============================================================
