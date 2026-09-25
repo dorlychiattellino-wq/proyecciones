@@ -1209,7 +1209,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 32;   // subir este número en cada actualización del archivo
+const VERSION_APP = 33;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -2303,16 +2303,25 @@ function aplicarVarInsumos(){
 let cmpSub = "sens";
 
 /* cálculo agrícola puro: cultivo, has, rinde, arrendamiento en unidades/ha */
-function agriCalcPuro(cultivo, has, rinde, unidHa, tipoArr){
+/* comercialización que usa el comparativo: "auto" = igual que el Simulador,
+   "con" = incluida en el % (usa % CON gtos com.), "sin" = aparte (usa % SIN + lo cargado en el comparativo) */
+function cmpCom(){
+  const m = (S.cmp && S.cmp.comModo) || "auto";
+  if(m==="con") return {usd:0, ars:0, pct:0, forzar:"con"};
+  if(m==="sin") return {usd:num(S.cmp.comUsd), ars:num(S.cmp.comArs), pct:num(S.cmp.comPct), forzar:"sin"};
+  return {usd:num(S.agComUsd), ars:num(S.agComArs), pct:num(S.agComPct), forzar:null};
+}
+function agriCalcPuro(cultivo, has, rinde, unidHa, tipoArr, com){
   const c = S.params.cultivos[cultivo] || {pctCon:0,pctSin:0,precioTn:0,moneda:"ARS"};
   const kg = has*rinde, tn = kg/1000;
   const tcC = num(S.params.tcCompra), tcV = num(S.params.tcVenta);
   let precioKg = num(c.precioTn)/1000;
   if(c.moneda==="USD") precioKg = num(c.precioTn)*tcC/1000;
   const ventas = kg*precioKg;
-  const usd=num(S.agComUsd), ars=num(S.agComArs), pctc=num(S.agComPct);
-  const hayCom = (usd>0 || ars>0 || pctc>0);
-  const comerc = usd*tn*tcV + ars*tn + ventas*pctc/100;
+  const cm = com || cmpCom();
+  const usd=num(cm.usd), ars=num(cm.ars), pctc=num(cm.pct);
+  const hayCom = cm.forzar==="sin" ? true : cm.forzar==="con" ? false : (usd>0 || ars>0 || pctc>0);
+  const comerc = hayCom ? (usd*tn*tcV + ars*tn + ventas*pctc/100) : 0;
   const pct = hayCom? num(c.pctSin) : num(c.pctCon);
   const gastos = ventas*pct/100;
   const esSoja = (tipoArr||S.arrTipo)==="SOJA_QQ";
@@ -2320,8 +2329,8 @@ function agriCalcPuro(cultivo, has, rinde, unidHa, tipoArr){
   const arr = has*num(unidHa)*pArr;
   const resultado = ventas - gastos - comerc - arr;
   // punto de equilibrio: qq máx a pagar con este rinde, y rinde mínimo con este arrendamiento
-  const cu = (usd*tcV + ars)/1000;                       // $ por kg de comercialización fija
-  const netoKg = precioKg*(1 - pct/100 - pctc/100) - cu;  // $ netos por kg antes del arrendamiento
+  const cu = hayCom ? (usd*tcV + ars)/1000 : 0;          // $ por kg de comercialización fija
+  const netoKg = precioKg*(1 - pct/100 - (hayCom?pctc:0)/100) - cu;  // $ netos por kg antes del arrendamiento
   const qqMax = (has>0 && pArr>0)? (ventas - gastos - comerc)/(has*pArr) : null;
   const rindeMin = (netoKg>0 && has>0)? arr/(netoKg*has) : null;
   return {has, rinde, kg, precioKg, ventas, gastos, comerc, pct, hayCom, arr, pArr, esSoja, resultado,
@@ -2382,6 +2391,18 @@ function cmpHtmlSens(){
         <option value="escalera" ${modo==="escalera"?"selected":""}>Escalera: a cada tramo de rinde le corresponde un arrendamiento distinto (los tramos del Precontrato)</option>
         <option value="matriz" ${modo==="matriz"?"selected":""}>Tabla cruzada: todos los rindes contra todos los arrendamientos</option>
       </select></div>
+    <div class="campo-form"><label>Gastos de comercialización</label>
+      <select onchange="cmpSet(S.cmp,'comModo',this.value)">
+        <option value="auto" ${(c.comModo||"auto")==="auto"?"selected":""}>Igual que el Simulador (${num(S.agComUsd)>0||num(S.agComArs)>0||num(S.agComPct)>0? "hoy: cargados aparte, usa % SIN" : "hoy: en blanco, usa % CON"})</option>
+        <option value="con" ${c.comModo==="con"?"selected":""}>Incluidos en el % de gastos (usa el % CON gtos com.)</option>
+        <option value="sin" ${c.comModo==="sin"?"selected":""}>Cargarlos aparte acá (usa el % SIN gtos com.)</option>
+      </select></div>
+    ${c.comModo==="sin" ? `<div class="fila3">
+      <div class="campo-form"><label>USD/tn</label><input type="text" inputmode="decimal" value="${ppH(c.comUsd||"")}" placeholder="${ppH(S.agComUsd||"0")}" onchange="cmpSet(S.cmp,'comUsd',this.value)"></div>
+      <div class="campo-form"><label>$/tn</label><input type="text" inputmode="decimal" value="${ppH(c.comArs||"")}" placeholder="${ppH(S.agComArs||"0")}" onchange="cmpSet(S.cmp,'comArs',this.value)"></div>
+      <div class="campo-form"><label>% s/ventas</label><input type="text" inputmode="decimal" value="${ppH(c.comPct||"")}" placeholder="${ppH(S.agComPct||"0")}" onchange="cmpSet(S.cmp,'comPct',this.value)"></div>
+    </div>
+    <div class="nota-fecha" style="margin:-6px 0 10px">USD/tn se convierte con el TC mayorista venta ($ ${fm2(num(S.params.tcVenta))}). Si dejás los tres en cero, se aplica el % SIN gtos com. sin descontar comercialización.</div>` : ""}
     ${modo==="escalera" ? cmpHtmlEscalera(c, has, esSoja, uni, ref) : ""}
     ${modo==="escalera" ? "" : `<div class="fila3">
       <div class="campo-form"><label>Rinde desde (kg/ha)</label><input type="text" inputmode="decimal" value="${ppH(c.rDesde)}" placeholder="Ej: 4000" onchange="cmpSet(S.cmp,'rDesde',this.value)"></div>
@@ -2394,7 +2415,7 @@ function cmpHtmlSens(){
       <div class="campo-form"><label>Paso</label><input type="text" inputmode="decimal" value="${ppH(c.qPaso)}" placeholder="Ej: 2" onchange="cmpSet(S.cmp,'qPaso',this.value)"></div>
     </div>`}
     <div class="aviso">Referencias en uso: precio ${ppH(c.cultivo)} <b>${num(cc.precioTn)>0? (cc.moneda==="USD"?"USD ":"$ ")+fm2(num(cc.precioTn))+"/tn":"<span style='color:var(--rojo)'>sin cargar</span>"}</b>
-      · gastos <b>${fm2(ref.pct)}%</b> (${ref.hayCom?"SIN gtos com. + comercialización aparte":"CON gtos com."})
+      · gastos <b>${fm2(ref.pct)}%</b> (${ref.hayCom?"SIN gtos com. + comercialización aparte: USD "+fm2(cmpCom().usd)+"/tn, $ "+fm2(cmpCom().ars)+"/tn, "+fm2(cmpCom().pct)+"%":"CON gtos com. incluidos"})
       · ${esSoja?"soja":"novillo"} <b>${ref.pArr>0? "$ "+fm2(ref.pArr)+(esSoja?"/qq":"/kg") : "<span style='color:var(--rojo)'>sin cargar</span>"}</b>
       ${ref.faltaPrecio||ref.faltaArr? "<br>⚠ Cargá lo que falta en Simulador / Parámetros para que el comparativo tenga sentido." : ""}</div>
   </div>`;
@@ -2478,7 +2499,7 @@ async function cmpPDF(){
     let y = ppMembrete(doc, W, MI, MD, "Comparativo rinde x arrendamiento", sinEmoji((S.nombreCampo? S.nombreCampo+" · ":"")+c.cultivo+" · "+fm2(has)+" has"));
     doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(95,112,132);
     const refs = "Generado el "+HOY()+"  ·  Precio "+c.cultivo+": "+(cc.moneda==="USD"?"USD ":"$ ")+fm2(num(cc.precioTn))+"/tn"
-      +"  ·  Gastos "+fm2(ref.pct)+"% s/ventas ("+(ref.hayCom?"sin gtos com. + comercializacion aparte":"con gtos com.")+")"
+      +"  ·  Gastos "+fm2(ref.pct)+"% s/ventas ("+(ref.hayCom?"sin gtos com. + comercializacion aparte: USD "+fm2(cmpCom().usd)+"/tn, $ "+fm2(cmpCom().ars)+"/tn, "+fm2(cmpCom().pct)+"%":"con gtos com. incluidos")+")"
       +"  ·  "+(esSoja?"Soja $ "+fm2(ref.pArr)+"/qq":"Novillo $ "+fm2(ref.pArr)+"/kg")
       +(num(S.params.tcCompra)>0?"  ·  TC $ "+fm2(num(S.params.tcCompra)):"");
     doc.splitTextToSize(sinEmoji(refs), MD-MI).forEach(l=>{ doc.text(l, MI, y); y+=3.8; });
@@ -2545,7 +2566,7 @@ async function cmpPDFEscalera(){
     let y = ppMembrete(doc, W, MI, MD, "Comparativo por tramos de rinde", sinEmoji((S.nombreCampo? S.nombreCampo+" · ":"")+c.cultivo+" · "+fm2(has)+" has"));
     doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(95,112,132);
     const refs = "Generado el "+HOY()+"  ·  Precio "+c.cultivo+": "+(cc.moneda==="USD"?"USD ":"$ ")+fm2(num(cc.precioTn))+"/tn"
-      +"  ·  Gastos "+fm2(ref.pct)+"% s/ventas ("+(ref.hayCom?"sin gtos com. + comercializacion aparte":"con gtos com.")+")"
+      +"  ·  Gastos "+fm2(ref.pct)+"% s/ventas ("+(ref.hayCom?"sin gtos com. + comercializacion aparte: USD "+fm2(cmpCom().usd)+"/tn, $ "+fm2(cmpCom().ars)+"/tn, "+fm2(cmpCom().pct)+"%":"con gtos com. incluidos")+")"
       +"  ·  "+(esSoja?"Soja $ "+fm2(ref.pArr)+"/qq":"Novillo $ "+fm2(ref.pArr)+"/kg");
     doc.splitTextToSize(sinEmoji(refs), MD-MI).forEach(l=>{ doc.text(l, MI, y); y+=3.8; });
     y+=3;
