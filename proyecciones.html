@@ -935,12 +935,21 @@ function pintarCultivosParam(){
     cont.appendChild(obs);
     const cu=S.params.cultivos[c];
     const ex = document.createElement("div");
-    ex.style.cssText = "display:grid;grid-template-columns:110px 90px 1fr;gap:6px;margin:0 0 14px;align-items:center";
-    ex.innerHTML = `<input type="text" inputmode="decimal" placeholder="Gasto extra/ha" title="Gasto adicional fijo por hectárea (se suma a los gastos aparte del %)" style="font-size:13px;padding:7px 8px;text-align:right" value="${cu.extraHa!==undefined?String(cu.extraHa).replace(/"/g,"&quot;"):""}"
-        onchange="S.params.cultivos['${cc}'].extraHa=this.value.trim();guardar();calc();if(typeof cmpRender==='function')cmpRender()">
-      <select style="font-size:13px;padding:7px 6px" onchange="S.params.cultivos['${cc}'].extraMon=this.value;guardar();calc();if(typeof cmpRender==='function')cmpRender()"><option value="ARS" ${cu.extraMon!=="USD"?"selected":""}>$/ha</option><option value="USD" ${cu.extraMon==="USD"?"selected":""}>USD/ha</option></select>
-      <input type="text" style="font-size:13px;padding:7px 10px;background:#f7fafd" placeholder="Concepto del gasto extra (ej: diferencia semilla 25/26 vs 26/27, otra marca/variedad)"
-        value="${(cu.extraNota||"").replace(/"/g,"&quot;")}" onchange="S.params.cultivos['${cc}'].extraNota=this.value;guardar();calc();if(typeof cmpRender==='function')cmpRender()">`;
+    ex.style.cssText = "background:#f4f8fd;border:1px dashed var(--gris-cl);border-radius:10px;padding:8px 10px;margin:0 0 14px";
+    const mon = cu.extraMon||"ARS";
+    ex.innerHTML = `<div style="font-size:10px;font-weight:800;letter-spacing:.4px;color:var(--gris);text-transform:uppercase;margin-bottom:4px">Gasto adicional fijo de ${ppH(c)} (se suma aparte del %)</div>
+      <div style="display:grid;grid-template-columns:120px 120px 1fr;gap:6px;align-items:end">
+        <div><label style="font-size:10px;color:var(--gris);font-weight:700">MONTO</label>
+          <input type="text" inputmode="decimal" placeholder="0" style="font-size:14px;padding:7px 8px;text-align:right;width:100%" value="${cu.extraHa!==undefined?String(cu.extraHa).replace(/"/g,"&quot;"):""}"
+            onchange="S.params.cultivos['${cc}'].extraHa=this.value.trim();guardar();calc();if(typeof cmpRender==='function')cmpRender()"></div>
+        <div><label style="font-size:10px;color:var(--gris);font-weight:700">UNIDAD</label>
+          <select style="font-size:13px;padding:7px 6px;width:100%" onchange="S.params.cultivos['${cc}'].extraMon=this.value;guardar();calc();if(typeof cmpRender==='function')cmpRender()">
+            <option value="ARS" ${mon==="ARS"?"selected":""}>$ por ha</option><option value="USD" ${mon==="USD"?"selected":""}>USD por ha</option>
+            <option value="ARS_TOT" ${mon==="ARS_TOT"?"selected":""}>$ total (se reparte por las has)</option><option value="USD_TOT" ${mon==="USD_TOT"?"selected":""}>USD total (se reparte por las has)</option></select></div>
+        <div><label style="font-size:10px;color:var(--gris);font-weight:700">CONCEPTO</label>
+          <input type="text" style="font-size:13px;padding:7px 10px;width:100%" placeholder="Ej: diferencia semilla 25/26 vs 26/27, otra marca/variedad"
+            value="${(cu.extraNota||"").replace(/"/g,"&quot;")}" onchange="S.params.cultivos['${cc}'].extraNota=this.value;guardar();calc();if(typeof cmpRender==='function')cmpRender()"></div>
+      </div></div>`;
     cont.appendChild(ex);
   });
 }
@@ -989,12 +998,15 @@ function calcGanaderia(){
   return {ventas, gastos, pct, det};
 }
 /* gasto adicional fijo por ha de un cultivo (ej.: diferencia de precio de la semilla entre campañas) */
-function extraHaDe(cultivo){
+function extraHaDe(cultivo, has){
   const c = S.params.cultivos[cultivo] || {};
   const v = num(c.extraHa); if(!(v>0)) return {porHa:0, nota:"", det:""};
-  const usd = c.extraMon==="USD", tcV = num(S.params.tcVenta);
-  const porHa = usd ? v*tcV : v;
-  return {porHa, nota:c.extraNota||"", det:(usd? "USD "+fm2(v)+"/ha × TC venta $"+fm2(tcV) : "$ "+fm2(v)+"/ha")};
+  const mon = c.extraMon||"ARS";                       // ARS | USD | ARS_TOT | USD_TOT
+  const usd = mon.startsWith("USD"), total = mon.endsWith("_TOT"), tcV = num(S.params.tcVenta);
+  let porHa = usd ? v*tcV : v;
+  let det = (usd? "USD "+fm2(v) : "$ "+fm2(v)) + (total? " en total" : "/ha") + (usd? " × TC venta $"+fm2(tcV) : "");
+  if(total){ if(num(has)>0){ porHa = porHa/num(has); det += " ÷ "+fm2(num(has))+" has"; } else porHa = 0; }
+  return {porHa, nota:c.extraNota||"", det, total};
 }
 function calcAgricultura(hasOverride){
   const c = S.params.cultivos[S.agCultivo] || {pctCon:0,pctSin:0,precioTn:0,moneda:"ARS"};
@@ -1018,9 +1030,9 @@ function calcAgricultura(hasOverride){
   const notaPct = hayCom? "% SIN gtos com. (la comercialización va aparte)"
                         : "% CON gtos com. incluidos";
   const gastos = ventas*pct/100;
-  const ex = extraHaDe(S.agCultivo);
+  const ex = extraHaDe(S.agCultivo, has);
   const extra = ex.porHa*has;
-  const extraDet = extra>0 ? (ex.det+" × "+fm2(has)+" has"+(ex.nota? " · "+ex.nota : "")) : "";
+  const extraDet = extra>0 ? (ex.det+(ex.total? "" : " × "+fm2(has)+" has")+(ex.nota? " · "+ex.nota : "")) : "";
   const faltaTC = (c.moneda==="USD" && tcC<=0) || (usd>0 && tcV<=0) || (c.extraMon==="USD" && num(c.extraHa)>0 && tcV<=0);
   return {has, rinde, kg, tn, precioKg, notaPrecio, ventas, comerc, detCom, gastos, pct, notaPct, extra, extraDet, faltaTC, moneda:c.moneda};
 }
@@ -1193,7 +1205,7 @@ async function compartirPDF(){
       const c=S.params.cultivos[S.agCultivo]||{};
       if(c.precioTn) refs.push("Precio "+S.agCultivo+": "+c.precioTn+" "+(c.moneda==="USD"?"USD":"$")+"/tn (del "+(c.fecha||"-")+")");
       if(c.obs) refs.push("% de gastos válidos para: "+c.obs);
-      if(num(c.extraHa)>0) refs.push("Gasto adicional fijo "+S.agCultivo+": "+(c.extraMon==="USD"?"USD ":"$ ")+fm2(num(c.extraHa))+"/ha"+(c.extraNota? " ("+c.extraNota+")" : ""));
+      if(num(c.extraHa)>0) refs.push("Gasto adicional fijo "+S.agCultivo+": "+((c.extraMon||"").startsWith("USD")?"USD ":"$ ")+fm2(num(c.extraHa))+((c.extraMon||"").endsWith("_TOT")?" en total":"/ha")+(c.extraNota? " ("+c.extraNota+")" : ""));
     }
     if(S.tipo!=="AGRICOLA"){
       CATS.forEach(cat=>{ const st=S.cats[cat.id];
@@ -1233,7 +1245,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 36;   // subir este número en cada actualización del archivo
+const VERSION_APP = 37;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -2359,7 +2371,7 @@ function agriCalcPuro(cultivo, has, rinde, unidHa, tipoArr, com){
   const esSoja = (tipoArr||cmpTipoArr(cmpCfg()))==="SOJA_QQ";
   const pArr = esSoja? num(S.arrPrecioSoja) : num(S.arrPrecioNov);
   const arr = has*num(unidHa)*pArr;
-  const extra = extraHaDe(cultivo).porHa*has;   // gasto adicional fijo del cultivo
+  const extra = extraHaDe(cultivo, has).porHa*has;   // gasto adicional fijo del cultivo
   const resultado = ventas - gastos - comerc - extra - arr;
   // punto de equilibrio: qq máx a pagar con este rinde, y rinde mínimo con este arrendamiento
   const cu = hayCom ? (usd*tcV + ars)/1000 : 0;          // $ por kg de comercialización fija
@@ -2450,7 +2462,7 @@ function cmpHtmlSens(){
     <div class="aviso">Referencias en uso: precio ${ppH(c.cultivo)} <b>${num(cc.precioTn)>0? (cc.moneda==="USD"?"USD ":"$ ")+fm2(num(cc.precioTn))+"/tn":"<span style='color:var(--rojo)'>sin cargar</span>"}</b>
       · gastos <b>${fm2(ref.pct)}%</b> (${ref.hayCom?"SIN gtos com. + comercialización aparte: USD "+fm2(cmpCom().usd)+"/tn, $ "+fm2(cmpCom().ars)+"/tn, "+fm2(cmpCom().pct)+"%":"CON gtos com. incluidos"})
       · ${esSoja?"soja":"novillo"} <b>${ref.pArr>0? "$ "+fm2(ref.pArr)+(esSoja?"/qq":"/kg") : "<span style='color:var(--rojo)'>sin cargar</span>"}</b>
-      ${extraHaDe(c.cultivo).porHa>0? " · gasto adicional fijo <b>"+extraHaDe(c.cultivo).det+"</b>"+(extraHaDe(c.cultivo).nota?" ("+ppH(extraHaDe(c.cultivo).nota)+")":"") : ""}
+      ${extraHaDe(c.cultivo,has).porHa>0? " · gasto adicional fijo <b>"+extraHaDe(c.cultivo,has).det+"</b>"+(extraHaDe(c.cultivo,has).nota?" ("+ppH(extraHaDe(c.cultivo,has).nota)+")":"") : ""}
       ${ref.faltaPrecio||ref.faltaArr? "<br>⚠ Cargá lo que falta en Simulador / Parámetros para que el comparativo tenga sentido." : ""}</div>
   </div>`;
   if(modo==="escalera") return h;
@@ -2533,7 +2545,7 @@ function cmpDibujarMatriz(doc, c, y0){
     const refs = "Generado el "+HOY()+"  ·  Precio "+c.cultivo+": "+(cc.moneda==="USD"?"USD ":"$ ")+fm2(num(cc.precioTn))+"/tn"
       +"  ·  Gastos "+fm2(ref.pct)+"% s/ventas ("+(ref.hayCom?"sin gtos com. + comercializacion aparte: USD "+fm2(cmpCom().usd)+"/tn, $ "+fm2(cmpCom().ars)+"/tn, "+fm2(cmpCom().pct)+"%":"con gtos com. incluidos")+")"
       +"  ·  "+(esSoja?"Soja $ "+fm2(ref.pArr)+"/qq":"Novillo $ "+fm2(ref.pArr)+"/kg")
-      +(extraHaDe(c.cultivo).porHa>0? "  ·  Gasto adicional fijo "+extraHaDe(c.cultivo).det+(extraHaDe(c.cultivo).nota?" ("+extraHaDe(c.cultivo).nota+")":"") : "")
+      +(extraHaDe(c.cultivo,has).porHa>0? "  ·  Gasto adicional fijo "+extraHaDe(c.cultivo,has).det+(extraHaDe(c.cultivo,has).nota?" ("+extraHaDe(c.cultivo,has).nota+")":"") : "")
       +(num(S.params.tcCompra)>0?"  ·  TC $ "+fm2(num(S.params.tcCompra)):"");
     doc.splitTextToSize(sinEmoji(compacto? refs.replace(/^Generado el [^·]+·\s*/,"") : refs), MD-MI).forEach(l=>{ doc.text(l, MI, y); y+=3.8; });
     y+=3;
@@ -2617,7 +2629,7 @@ function cmpDibujarEscalera(doc, c, y0){
     const refs = "Generado el "+HOY()+"  ·  Precio "+c.cultivo+": "+(cc.moneda==="USD"?"USD ":"$ ")+fm2(num(cc.precioTn))+"/tn"
       +"  ·  Gastos "+fm2(ref.pct)+"% s/ventas ("+(ref.hayCom?"sin gtos com. + comercializacion aparte: USD "+fm2(cmpCom().usd)+"/tn, $ "+fm2(cmpCom().ars)+"/tn, "+fm2(cmpCom().pct)+"%":"con gtos com. incluidos")+")"
       +"  ·  "+(esSoja?"Soja $ "+fm2(ref.pArr)+"/qq":"Novillo $ "+fm2(ref.pArr)+"/kg")
-      +(extraHaDe(c.cultivo).porHa>0? "  ·  Gasto adicional fijo "+extraHaDe(c.cultivo).det+(extraHaDe(c.cultivo).nota?" ("+extraHaDe(c.cultivo).nota+")":"") : "");
+      +(extraHaDe(c.cultivo,has).porHa>0? "  ·  Gasto adicional fijo "+extraHaDe(c.cultivo,has).det+(extraHaDe(c.cultivo,has).nota?" ("+extraHaDe(c.cultivo,has).nota+")":"") : "");
     doc.splitTextToSize(sinEmoji(compacto? refs.replace(/^Generado el [^·]+·\s*/,"") : refs), MD-MI).forEach(l=>{ doc.text(l, MI, y); y+=3.8; });
     y+=3;
     const cols=[{t:"Tramo",w:14},{t:"Rinde de "+sinEmoji(c.cultivo),w:60},{t:"Arrendamiento",w:32},{t:"Margen al rinde menor",w:62},{t:"Margen al rinde mayor",w:62},{t:"Max. a pagar (rinde menor)",w:43}];
@@ -2680,26 +2692,37 @@ function cmpConfigActual(nombre){
   return c;
 }
 function cmpEscenarios(){ return Object.entries(S.cmpEsc||{}).map(([id,e])=>Object.assign({id},e)).sort((a,b)=>(a.ord||0)-(b.ord||0)); }
-function cmpGuardarEsc(){
+let cmpEditandoEsc = null;   // id del escenario que se está editando
+function cmpGuardarEsc(comoNuevo){
   const inp=document.getElementById("cmp_esnom"); const nom=(inp&&inp.value||"").trim();
   const c=S.cmp;
   const valido = (c.modo==="escalera") ? (preTramos().length && num(c.has)>0) : (cmpSerie(c.rDesde,c.rHasta,c.rPaso).length && cmpSerie(c.qDesde,c.qHasta,c.qPaso).length && num(c.has)>0);
   if(!valido){ toast("Armá primero un comparativo completo"); return; }
   S.cmpEsc=S.cmpEsc||{};
+  if(cmpEditandoEsc && !comoNuevo && S.cmpEsc[cmpEditandoEsc]){
+    const viejo=S.cmpEsc[cmpEditandoEsc];
+    const cfg=cmpConfigActual(nom || viejo.nombre);
+    cfg.ord=viejo.ord; cfg.fecha=HOY();
+    S.cmpEsc[cmpEditandoEsc]=cfg;
+    cmpEditandoEsc=null; if(inp) inp.value="";
+    guardar(); cmpRender(); toast("✔ Escenario actualizado"); return;
+  }
   const n=cmpEscenarios().length;
   const cfg=cmpConfigActual(nom || ("Escenario "+(n+1)+" · "+c.cultivo+" "+(c.modo==="escalera"?"escalera":"rinde "+fm2(num(c.rDesde))+(num(c.rHasta)>num(c.rDesde)?"-"+fm2(num(c.rHasta)):"")+" / "+fm2(num(c.qDesde))+(num(c.qHasta)>num(c.qDesde)?"-"+fm2(num(c.qHasta)):"")+" qq")));
   cfg.ord=n; cfg.fecha=HOY();
   S.cmpEsc["e"+Date.now().toString(36)]=cfg;
-  if(inp) inp.value="";
+  cmpEditandoEsc=null; if(inp) inp.value="";
   guardar(); cmpRender(); toast("✔ Escenario guardado ("+(n+1)+")");
 }
 function cmpCargarEsc(id){
   const e=S.cmpEsc[id]; if(!e) return;
-  ["cultivo","has","rDesde","rHasta","rPaso","qDesde","qHasta","qPaso","modo","comModo","comUsd","comArs","comPct"].forEach(k=>{ if(e[k]!==undefined) S.cmp[k]=e[k]; });
+  ["cultivo","has","rDesde","rHasta","rPaso","qDesde","qHasta","qPaso","modo","comModo","comUsd","comArs","comPct"].forEach(k=>{ S.cmp[k]=(e[k]!==undefined? e[k] : ""); });
   if(e.arrTipo){ S.arrTipo=e.arrTipo; pintarArr(); }
-  guardar(); cmpRender(); toast("Escenario cargado en el comparativo");
+  cmpEditandoEsc=id;
+  guardar(); cmpRender(); toast("Escenario abierto para editar: cambiá lo que quieras y tocá \"Guardar cambios\"");
   window.scrollTo({top:0, behavior:"smooth"});
 }
+function cmpCancelarEdicion(){ cmpEditandoEsc=null; cmpRender(); }
 function cmpBorrarEsc(id){
   const e=S.cmpEsc[id]; if(!e) return;
   if(!confirm("¿Borrar el escenario \""+(e.nombre||"")+"\"?")) return;
@@ -2709,16 +2732,18 @@ function cmpHtmlEscenarios(){
   const es=cmpEscenarios();
   return `<div class="tarjeta">
     <h3 class="tit">🗂 Comparativos guardados (${es.length})</h3>
-    <p class="sub" style="margin-bottom:8px">Guardá el comparativo que armaste arriba con un nombre; después podés volver a cargarlo, borrarlo, o sacar <b>todos juntos en un solo PDF</b> (una hoja por comparativo).</p>
+    <p class="sub" style="margin-bottom:8px">Guardá el comparativo que armaste arriba con un nombre. Con ✏️ lo abrís para editarlo y volver a guardarlo, con 🗑️ lo borrás, y podés sacar <b>todos juntos en un solo PDF</b>. Los precios, % de gastos y gastos adicionales se toman siempre de Parámetros al momento de calcular, así que los escenarios guardados se actualizan solos cuando cambiás esos datos.</p>
+    ${cmpEditandoEsc && S.cmpEsc && S.cmpEsc[cmpEditandoEsc] ? `<div class="aviso" style="border-color:var(--trigo);margin:0 0 8px">✏️ Editando <b>${ppH(S.cmpEsc[cmpEditandoEsc].nombre||"")}</b>: los cambios que hagas arriba se guardan sobre ese escenario.</div>` : ""}
     <div class="fila-botones" style="align-items:center">
-      <input type="text" id="cmp_esnom" placeholder="Nombre (ej: Maíz 8.000 kg, 9 a 12 qq)" style="flex:1;min-width:200px">
-      <button class="btn peq" onclick="cmpGuardarEsc()">💾 Guardar el comparativo actual</button>
+      <input type="text" id="cmp_esnom" placeholder="${cmpEditandoEsc? "Nuevo nombre (vacío = conserva el actual)" : "Nombre (ej: Maíz 8.000 kg, 9 a 12 qq)"}" style="flex:1;min-width:200px">
+      ${cmpEditandoEsc ? `<button class="btn peq sec" onclick="cmpGuardarEsc(false)">💾 Guardar cambios</button><button class="btn peq linea" onclick="cmpGuardarEsc(true)">Guardar como nuevo</button><button class="btn peq gris" onclick="cmpCancelarEdicion()">Cancelar</button>`
+                      : `<button class="btn peq" onclick="cmpGuardarEsc(true)">💾 Guardar el comparativo actual</button>`}
     </div>
     ${es.length? `<div class="pp-scroll" style="margin-top:10px"><table class="pp-tab" style="min-width:0"><thead><tr><th>#</th><th>Nombre</th><th>Detalle</th><th>Fecha</th><th></th></tr></thead><tbody>
-      ${es.map((e,i)=>`<tr><td>${i+1}</td><td style="font-weight:700">${ppH(e.nombre||"")}</td>
+      ${es.map((e,i)=>`<tr style="${e.id===cmpEditandoEsc?"background:#fff8e1":""}"><td>${i+1}</td><td style="font-weight:700">${e.id===cmpEditandoEsc?"✏️ ":""}${ppH(e.nombre||"")}</td>
         <td style="font-size:12px;color:var(--gris)">${ppH(e.cultivo)} · ${fm2(num(e.has))} has · ${e.modo==="escalera"? Object.keys(e.tramos||{}).length+" tramos" : "rinde "+fm2(num(e.rDesde))+(num(e.rHasta)>num(e.rDesde)?"–"+fm2(num(e.rHasta)):"")+" · "+fm2(num(e.qDesde))+(num(e.qHasta)>num(e.qDesde)?"–"+fm2(num(e.qHasta)):"")+" "+((e.arrTipo||"SOJA_QQ")==="SOJA_QQ"?"qq":"kg")} · com. ${e.comModo==="con"?"incluida":e.comModo==="sin"?"aparte":"simulador"}</td>
         <td style="font-size:12px;color:var(--gris)">${ppH(e.fecha||"")}</td>
-        <td style="white-space:nowrap"><button class="pp-ico" title="Cargar en el comparativo" onclick="cmpCargarEsc('${e.id}')">📂</button><button class="pp-ico" title="Borrar" onclick="cmpBorrarEsc('${e.id}')">🗑️</button></td></tr>`).join("")}
+        <td style="white-space:nowrap"><button class="pp-ico" title="Abrir para editar" onclick="cmpCargarEsc('${e.id}')">✏️</button><button class="pp-ico" title="Borrar" onclick="cmpBorrarEsc('${e.id}')">🗑️</button></td></tr>`).join("")}
       </tbody></table></div>
       <button class="btn sec" style="margin-top:12px" id="btPdfCmpTodos" onclick="cmpPDFTodos()">📄 Ver PDF con todos los comparativos (${es.length})</button>` : ""}
   </div>`;
