@@ -439,10 +439,10 @@ function traer(url, cuerpo){
       <input type="url" id="pProxyUrl" placeholder="https://script.google.com/macros/s/…/exec" onchange="S.params.proxyUrl=this.value.trim();guardar();pintarProxy()"></div>
     <div class="fila-botones">
       <button class="btn peq" onclick="probarProxy()">✔ Guardar y probar</button>
-      <button class="btn peq gris" onclick="document.getElementById('pProxyUrl').value='';S.params.proxyUrl='';guardar();pintarProxy();toast('Conector quitado')">Quitar</button>
+      <button class="btn peq gris" onclick="document.getElementById('pProxyUrl').value=PROXY_DEFAULT;S.params.proxyUrl='';guardar();pintarProxy();toast('Se volvió al conector preconfigurado')">Restablecer</button>
     </div>
     <div class="nota-fecha" id="proxyEstado" style="margin-top:8px"></div>
-    <div class="aviso">La URL se comparte con todos los teléfonos (se guarda como parámetro), así que se configura una sola vez. Si algún día Google te pide volver a autorizar, repetí "Implementar → Administrar implementaciones → Editar → Nueva versión".</div>
+    <div class="aviso">El conector ya viene preconfigurado en la app; solo cambiá la URL si algún día creás uno nuevo. La URL se comparte con todos los teléfonos. Si algún día Google te pide volver a autorizar, repetí "Implementar → Administrar implementaciones → Editar → Nueva versión".</div>
   </div>
 
   <div class="tarjeta">
@@ -598,7 +598,12 @@ function notaFecha(el, fecha, pref){
 }
 function norm(t){ return String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," "); }
 
-function proxyPropio(){ const u=(S && S.params && S.params.proxyUrl || "").trim(); return /^https:\/\/script\.google\.com\//.test(u) ? u.replace(/\/+$/,"") : ""; }
+const PROXY_DEFAULT = "https://script.google.com/macros/s/AKfycbxKzRolvcSWh-ZRcKbgeKaVQb8wc_1V3ooAdpabdluvDdH3fPTOHABz-F2ACYmJhgat/exec";
+function proxyPropio(){
+  let u=(S && S.params && S.params.proxyUrl || "").trim();
+  if(!u) u = PROXY_DEFAULT;                       // conector propio preconfigurado
+  return /^https:\/\/script\.google\.com\//.test(u) ? u.replace(/\/+$/,"") : "";
+}
 async function fetchTexto(url, opts){
   // El navegador no puede consultar directo otros sitios (CORS). Orden: conector propio (Apps Script)
   // si está configurado, directo, y después intermediarios públicos hasta que uno responda.
@@ -1296,7 +1301,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 39;   // subir este número en cada actualización del archivo
+const VERSION_APP = 40;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -2341,7 +2346,7 @@ function partDe(c){ // participación de insumos para un cultivo (propia o la ge
   return (cc.partInsumos!==undefined && String(cc.partInsumos).trim()!=="") ? num(cc.partInsumos) : num(S.params.partInsumos);
 }
 function pintarProxy(){
-  const i=document.getElementById("pProxyUrl"); if(i) i.value=(S.params.proxyUrl||"");
+  const i=document.getElementById("pProxyUrl"); if(i) i.value=(S.params.proxyUrl||PROXY_DEFAULT);
   const e=document.getElementById("proxyEstado"); if(!e) return;
   e.textContent = proxyPropio() ? "Conector configurado: los precios se consultan primero por acá." : (S.params.proxyUrl? "⚠ La URL no parece de Apps Script (debe empezar con https://script.google.com/)." : "Sin conector: se usan intermediarios públicos (pueden fallar).");
   e.classList.toggle("vieja", !proxyPropio());
