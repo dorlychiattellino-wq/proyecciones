@@ -414,6 +414,38 @@
   <div class="tarjeta" id="varInsumosCard"></div>
 
   <div class="tarjeta">
+    <h3 class="tit">🔌 Conector propio para precios (BCR, decampoacampo, MAG)</h3>
+    <p class="sub" style="margin-bottom:8px">Los sitios de precios no dejan que una página web los consulte directo, y los intermediarios públicos fallan seguido. Con un conector propio (gratis, con tu cuenta de Google) la app consulta los precios a través de él, como lo hace mestizo.py desde la PC.</p>
+    <details style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:700;color:var(--verde);font-size:13px">Cómo crearlo (una sola vez, 5 minutos)</summary>
+      <ol style="font-size:13px;line-height:1.5;padding-left:20px;margin:8px 0">
+        <li>Entrá a <b>script.google.com</b> con tu cuenta de Google y tocá <b>Nuevo proyecto</b>.</li>
+        <li>Borrá lo que hay en el editor y pegá el código de abajo (botón "Copiar código").</li>
+        <li>Arriba a la derecha: <b>Implementar → Nueva implementación</b> → tipo <b>Aplicación web</b>.</li>
+        <li>En "Quién tiene acceso" elegí <b>Cualquier usuario</b> y tocá <b>Implementar</b> (te va a pedir autorizar: aceptá).</li>
+        <li>Copiá la <b>URL de la aplicación web</b> (empieza con https://script.google.com/macros/…) y pegala acá abajo. Tocá <b>Guardar y probar</b>.</li>
+      </ol>
+      <textarea id="gasCodigo" readonly rows="9" style="width:100%;font-family:monospace;font-size:11px;padding:8px;border:1px solid var(--gris-cl);border-radius:8px;background:#f7fafd">function doGet(e){ return traer(e.parameter.url, null); }
+function doPost(e){ return traer(e.parameter.url, e.postData ? e.postData.contents : null); }
+function traer(url, cuerpo){
+  if(!url) return ContentService.createTextOutput("falta url");
+  var opt = {muteHttpExceptions:true, followRedirects:true, headers:{"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}};
+  if(cuerpo){ opt.method="post"; opt.payload=cuerpo; opt.contentType="application/x-www-form-urlencoded"; }
+  var r = UrlFetchApp.fetch(url, opt);
+  return ContentService.createTextOutput(r.getContentText()).setMimeType(ContentService.MimeType.TEXT);
+}</textarea>
+      <div class="fila-botones"><button class="btn peq linea" onclick="const t=document.getElementById('gasCodigo');t.select();try{navigator.clipboard.writeText(t.value);toast('✔ Código copiado');}catch(e){document.execCommand('copy');toast('✔ Código copiado');}">📋 Copiar código</button></div>
+    </details>
+    <div class="campo-form"><label>URL de tu aplicación web (Apps Script)</label>
+      <input type="url" id="pProxyUrl" placeholder="https://script.google.com/macros/s/…/exec" onchange="S.params.proxyUrl=this.value.trim();guardar();pintarProxy()"></div>
+    <div class="fila-botones">
+      <button class="btn peq" onclick="probarProxy()">✔ Guardar y probar</button>
+      <button class="btn peq gris" onclick="document.getElementById('pProxyUrl').value='';S.params.proxyUrl='';guardar();pintarProxy();toast('Conector quitado')">Quitar</button>
+    </div>
+    <div class="nota-fecha" id="proxyEstado" style="margin-top:8px"></div>
+    <div class="aviso">La URL se comparte con todos los teléfonos (se guarda como parámetro), así que se configura una sola vez. Si algún día Google te pide volver a autorizar, repetí "Implementar → Administrar implementaciones → Editar → Nueva versión".</div>
+  </div>
+
+  <div class="tarjeta">
     <h3 class="tit">💾 Copia de seguridad</h3>
     <p class="sub" style="margin-bottom:10px">Guarda en un archivo TODO lo de la app: simulador, parámetros, presupuestos (abiertos y cerrados), notas y cotizaciones. En la PC, "Guardar" te deja elegir la carpeta; en el celular va a Descargas, y con "Compartir" podés mandarlo a la app Archivos, a WhatsApp, etc.</p>
     <div class="fila-botones">
@@ -500,7 +532,7 @@ function estadoInicial(){
                  "Soja":{pctCon:"45",pctSin:"40",obs:"",precioTn:"",moneda:"ARS",fecha:""} },
       kgAnimal:{}, // se completa con defaults
       tcCompra:"", tcVenta:"", tcFecha:"",
-      varInsumos:"", varInsumosNota:"", partInsumos:""
+      varInsumos:"", varInsumosNota:"", partInsumos:"", proxyUrl:""
     },
     presu:{},              // presupuestos de insumos: {id: {...}}
     notas:{},              // notas / recordatorios con semáforo: {id: {...}}
@@ -558,7 +590,7 @@ function num(v){
 }
 function fm(n){ return "$ " + (n||0).toLocaleString("es-AR",{maximumFractionDigits:0}); }
 function fm2(n){ return (n||0).toLocaleString("es-AR",{maximumFractionDigits:2}); }
-function toast(msg,ms){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("ver");
+function toast(msg,ms){ const t=document.getElementById("toast"); if(!t) return; t.textContent=msg; t.classList.add("ver");
   clearTimeout(t._to); t._to=setTimeout(()=>t.classList.remove("ver"), ms||3200); }
 function notaFecha(el, fecha, pref){
   el.textContent = fecha ? ((pref||"Precio del ")+fecha) : "Sin precio cargado";
@@ -566,30 +598,34 @@ function notaFecha(el, fecha, pref){
 }
 function norm(t){ return String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," "); }
 
+function proxyPropio(){ const u=(S && S.params && S.params.proxyUrl || "").trim(); return /^https:\/\/script\.google\.com\//.test(u) ? u.replace(/\/+$/,"") : ""; }
 async function fetchTexto(url, opts){
-  // El navegador no puede consultar directo otros sitios (CORS), así que se intenta
-  // directo y después por varios intermediarios públicos, en orden, hasta que uno responda.
-  const intentos = [
-    {u:url, tipo:"texto"},
-    {u:"https://corsproxy.io/?url="+encodeURIComponent(url), tipo:"texto"},
-    {u:"https://api.allorigins.win/raw?url="+encodeURIComponent(url), tipo:"texto"},
-    {u:"https://api.codetabs.com/v1/proxy?quest="+encodeURIComponent(url), tipo:"texto"},
-    {u:"https://api.allorigins.win/get?url="+encodeURIComponent(url), tipo:"json"},
-  ];
+  // El navegador no puede consultar directo otros sitios (CORS). Orden: conector propio (Apps Script)
+  // si está configurado, directo, y después intermediarios públicos hasta que uno responda.
+  const pp = proxyPropio();
+  const intentos = [];
+  if(pp) intentos.push({u: pp+"?url="+encodeURIComponent(url), tipo:"texto", nom:"conector propio"});
+  intentos.push(
+    {u:url, tipo:"texto", nom:"directo"},
+    {u:"https://corsproxy.io/?url="+encodeURIComponent(url), tipo:"texto", nom:"corsproxy"},
+    {u:"https://api.allorigins.win/raw?url="+encodeURIComponent(url), tipo:"texto", nom:"allorigins"},
+    {u:"https://api.codetabs.com/v1/proxy?quest="+encodeURIComponent(url), tipo:"texto", nom:"codetabs"},
+    {u:"https://api.allorigins.win/get?url="+encodeURIComponent(url), tipo:"json", nom:"allorigins-json"}
+  );
   let ultimoError = "sin respuesta";
   for(const i of intentos){
     try{
       const ctl = new AbortController();
-      const t = setTimeout(()=>ctl.abort(), 9000);   // 9 s por intento
+      const t = setTimeout(()=>ctl.abort(), i.nom==="conector propio"? 12000 : 6000);
       const r = await fetch(i.u, Object.assign({signal:ctl.signal}, opts||{}));
       clearTimeout(t);
-      if(!r.ok){ ultimoError = "HTTP "+r.status; continue; }
+      if(!r.ok){ ultimoError = i.nom+": HTTP "+r.status; continue; }
       let texto;
       if(i.tipo==="json"){ const j = await r.json(); texto = (j && j.contents) || ""; }
       else texto = await r.text();
-      if(texto && texto.length > 150) return texto;
-      ultimoError = "respuesta vacía";
-    }catch(e){ ultimoError = (e && e.name==="AbortError") ? "tiempo agotado" : "sin conexión"; }
+      if(texto && texto.length > 150){ window.__ultimaVia = i.nom; return texto; }
+      ultimoError = i.nom+": respuesta vacía";
+    }catch(e){ ultimoError = i.nom+": "+((e && e.name==="AbortError") ? "tiempo agotado" : "sin conexión"); }
   }
   throw new Error(ultimoError);
 }
@@ -744,9 +780,9 @@ async function traerPrecioBCR(){
       guardar(); pintarPrecioCultivo(); calc();
       toast("✔ "+cult+": "+fm(precioTn)+"/tn (pizarra BCR). Revisalo y editalo si hace falta.");
     }else{
-      toast("No se encontró "+cult+" en la pizarra BCR: cargalo a mano.");
+      toast("La página de la BCR llegó (vía "+(window.__ultimaVia||"?")+") pero sin el precio de "+cult+": probablemente el sitio devolvió una pantalla de verificación anti-robots. "+(proxyPropio()?"":"Configurá el conector propio en Parámetros para evitarlo, o ")+"tocá 🌐 y cargalo a mano.", 7000);
     }
-  }catch(e){ toast("No respondió ningún intermediario ("+e.message+"). Reintentá en un rato o tocá 🌐 para ver la pizarra y cargarlo a mano."); }
+  }catch(e){ toast("No se pudo leer la pizarra BCR ("+e.message+"). "+(proxyPropio()?"Revisá el conector propio en Parámetros.":"Configurá el conector propio en Parámetros (5 minutos, gratis) para no depender de intermediarios públicos.")+" Mientras tanto, tocá 🌐 y cargalo a mano.", 8000); }
   bt.innerHTML="⬇ Precio pizarra BCR"; bt.disabled=false;
 }
 
@@ -813,9 +849,11 @@ async function traerNovilloMAG(){
     headers:{"Content-Type":"application/x-www-form-urlencoded"}});
   let html = "";
   // 1º directo, 2º-3º por proxies (el sitio no permite CORS desde el navegador)
-  const intentos = [URL_MAG,
-                    "https://corsproxy.io/?url="+encodeURIComponent(URL_MAG),
-                    "https://api.allorigins.win/raw?url="+encodeURIComponent(URL_MAG)];
+  const intentos = [];
+  if(proxyPropio()) intentos.push(proxyPropio()+"?url="+encodeURIComponent(URL_MAG));
+  intentos.push(URL_MAG,
+                "https://corsproxy.io/?url="+encodeURIComponent(URL_MAG),
+                "https://api.allorigins.win/raw?url="+encodeURIComponent(URL_MAG));
   for(const u of intentos){
     try{ const r = await post(u); if(r.ok){ html = await r.text(); if(html.length>200) break; } }catch(e){}
   }
@@ -860,8 +898,8 @@ async function refPrecioArr(){
         S.arrPrecioSoja = String(Math.round(tn/10*100)/100); // $/tn → $/qq
         S.arrPrecioSojaFecha = HOY(); guardar(); pintarArr(); calc();
         toast("✔ Soja BCR: "+fm(tn)+"/tn → "+fm(tn/10)+"/qq");
-      } else toast("No se encontró la soja en BCR: cargalo a mano.");
-    }catch(e){ toast("Sin conexión con BCR: cargá el precio a mano."); }
+      } else toast("La página de la BCR llegó pero sin el precio de la soja (posible pantalla anti-robots). "+(proxyPropio()?"":"Configurá el conector propio en Parámetros, o ")+"cargalo a mano.", 7000);
+    }catch(e){ toast("No se pudo leer la pizarra BCR ("+e.message+"). "+(proxyPropio()?"Revisá el conector propio.":"Configurá el conector propio en Parámetros.")+" Mientras tanto cargalo a mano.", 8000); }
     bt.disabled=false; pintarArr();
   }else{
     await traerNovilloMAG();
@@ -1258,7 +1296,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 38;   // subir este número en cada actualización del archivo
+const VERSION_APP = 39;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -2301,6 +2339,26 @@ function insUsarVariacion(k){
 function partDe(c){ // participación de insumos para un cultivo (propia o la general)
   const cc=S.params.cultivos[c]||{};
   return (cc.partInsumos!==undefined && String(cc.partInsumos).trim()!=="") ? num(cc.partInsumos) : num(S.params.partInsumos);
+}
+function pintarProxy(){
+  const i=document.getElementById("pProxyUrl"); if(i) i.value=(S.params.proxyUrl||"");
+  const e=document.getElementById("proxyEstado"); if(!e) return;
+  e.textContent = proxyPropio() ? "Conector configurado: los precios se consultan primero por acá." : (S.params.proxyUrl? "⚠ La URL no parece de Apps Script (debe empezar con https://script.google.com/)." : "Sin conector: se usan intermediarios públicos (pueden fallar).");
+  e.classList.toggle("vieja", !proxyPropio());
+}
+async function probarProxy(){
+  const i=document.getElementById("pProxyUrl"); if(i){ S.params.proxyUrl=i.value.trim(); guardar(); pintarProxy(); }
+  const pp=proxyPropio(); if(!pp){ toast("Pegá la URL de la aplicación web (empieza con https://script.google.com/)"); return; }
+  const e=document.getElementById("proxyEstado"); if(e) e.textContent="⏳ Probando el conector con la pizarra BCR…";
+  try{
+    const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(), 20000);
+    const r=await fetch(pp+"?url="+encodeURIComponent(URL_BCR), {signal:ctl.signal}); clearTimeout(t);
+    const html=await r.text();
+    const m=html.match(/\bSoja\b[\s\S]{0,500}?\$\s*([\d]{1,3}(?:\.[\d]{3})*(?:,\d{1,2})?|\d+)/i);
+    if(m){ if(e) e.textContent="✔ Conector OK: la pizarra BCR responde (soja $ "+m[1]+"/tn). Ya podés usar los botones de precios."; e.classList.remove("vieja"); toast("✔ Conector funcionando"); }
+    else if(html.length>150){ if(e) e.textContent="⚠ El conector responde, pero la BCR devolvió una página sin precios ("+html.length+" caracteres). Probá de nuevo en un rato."; toast("El conector responde pero la BCR no devolvió precios"); }
+    else { if(e) e.textContent="⚠ El conector respondió vacío: revisá que la implementación sea 'Aplicación web' con acceso 'Cualquier usuario'. Respuesta: "+html.slice(0,80); toast("Respuesta vacía del conector"); }
+  }catch(err){ if(e) e.textContent="✖ No se pudo llamar al conector ("+(err.name==="AbortError"?"tiempo agotado":err.message)+"). Verificá la URL y el acceso 'Cualquier usuario'."; e.classList.add("vieja"); toast("No responde el conector"); }
 }
 function pintarVarInsumos(){
   const el=document.getElementById("varInsumosCard"); if(!el) return;
@@ -3441,6 +3499,7 @@ function volcarInputs(){
   ppCancelar(); ppRender();
   if(typeof ntPintar==="function") ntPintar();
   if(typeof pintarVarInsumos==="function") pintarVarInsumos();
+  if(typeof pintarProxy==="function") pintarProxy();
   if(typeof insRender==="function") insRender();
   if(typeof cmpRender==="function") cmpRender();
   setTipo(S.tipo);
