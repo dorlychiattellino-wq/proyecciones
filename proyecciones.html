@@ -505,6 +505,7 @@ function estadoInicial(){
     notas:{},              // notas / recordatorios con semáforo: {id: {...}}
     ins: JSON.parse(JSON.stringify(INS_SEED)),   // insumos de campaña (lotes, dosis, precios)
     cmp:{cultivo:"", has:"", rDesde:"", rHasta:"", rPaso:"", qDesde:"", qHasta:"", qPaso:""},
+    cmpEsc:{},
     pre:{arrendador:"", arrendatario:"Osvaldo Gustavo Solsona (EL MESTIZO)", campo:"", has:"", campania:"", cultivo:"", unidad:"SOJA_QQ", tramos:{}, fecha:"", vigencia:"", lugar:"", obs:"", plazoPago:""},
     presuTC:{venta:"",fecha:""},    // dólar BNA vendedor usado en presupuestos
     presuTCMay:{venta:"",fecha:""}  // dólar mayorista vendedor usado en presupuestos
@@ -1209,7 +1210,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 33;   // subir este número en cada actualización del archivo
+const VERSION_APP = 34;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -2305,12 +2306,20 @@ let cmpSub = "sens";
 /* cálculo agrícola puro: cultivo, has, rinde, arrendamiento en unidades/ha */
 /* comercialización que usa el comparativo: "auto" = igual que el Simulador,
    "con" = incluida en el % (usa % CON gtos com.), "sin" = aparte (usa % SIN + lo cargado en el comparativo) */
+let cmpCfgActivo = null;   // escenario que se está dibujando (si es null, se usa S.cmp)
+function cmpCfg(){ return cmpCfgActivo || S.cmp; }
 function cmpCom(){
-  const m = (S.cmp && S.cmp.comModo) || "auto";
+  const c = cmpCfg(); const m = (c && c.comModo) || "auto";
   if(m==="con") return {usd:0, ars:0, pct:0, forzar:"con"};
-  if(m==="sin") return {usd:num(S.cmp.comUsd), ars:num(S.cmp.comArs), pct:num(S.cmp.comPct), forzar:"sin"};
+  if(m==="sin") return {usd:num(c.comUsd), ars:num(c.comArs), pct:num(c.comPct), forzar:"sin"};
   return {usd:num(S.agComUsd), ars:num(S.agComArs), pct:num(S.agComPct), forzar:null};
 }
+function cmpTramosDe(cfg){
+  if(cfg && cfg.tramos && Object.keys(cfg.tramos).length)
+    return Object.entries(cfg.tramos).map(([id,t])=>Object.assign({id},t)).sort((a,b)=>num(a.rinde)-num(b.rinde));
+  return preTramos();
+}
+function cmpTipoArr(cfg){ return (cfg && cfg.arrTipo) || S.arrTipo; }
 function agriCalcPuro(cultivo, has, rinde, unidHa, tipoArr, com){
   const c = S.params.cultivos[cultivo] || {pctCon:0,pctSin:0,precioTn:0,moneda:"ARS"};
   const kg = has*rinde, tn = kg/1000;
@@ -2324,7 +2333,7 @@ function agriCalcPuro(cultivo, has, rinde, unidHa, tipoArr, com){
   const comerc = hayCom ? (usd*tn*tcV + ars*tn + ventas*pctc/100) : 0;
   const pct = hayCom? num(c.pctSin) : num(c.pctCon);
   const gastos = ventas*pct/100;
-  const esSoja = (tipoArr||S.arrTipo)==="SOJA_QQ";
+  const esSoja = (tipoArr||cmpTipoArr(cmpCfg()))==="SOJA_QQ";
   const pArr = esSoja? num(S.arrPrecioSoja) : num(S.arrPrecioNov);
   const arr = has*num(unidHa)*pArr;
   const resultado = ventas - gastos - comerc - arr;
@@ -2351,7 +2360,7 @@ function cmpVer(sub){
 function cmpRender(){
   const cont = document.getElementById("cmpCuerpo"); if(!cont) return;
   cmpD();
-  cont.innerHTML = cmpSub==="sens" ? cmpHtmlSens() : cmpHtmlPre();
+  cont.innerHTML = cmpSub==="sens" ? cmpHtmlSens()+cmpHtmlEscenarios() : cmpHtmlPre();
 }
 function cmpSet(obj, k, v){ obj[k]=v; guardar(); cmpRender(); }
 function cmpSerie(desde, hasta, paso){
@@ -2482,21 +2491,15 @@ function cmpHtmlEscalera(c, has, esSoja, uni, ref){
     <button class="btn" style="margin-top:12px" id="btPdfCmp" onclick="cmpPDF()">📄 Ver PDF comparativo</button>`;
   return h;
 }
-async function cmpPDF(){
-  const c=S.cmp, has=num(c.has);
-  if((c.modo||"matriz")==="escalera") return cmpPDFEscalera();
-  const rindes=cmpSerie(c.rDesde,c.rHasta,c.rPaso), qqs=cmpSerie(c.qDesde,c.qHasta,c.qPaso);
-  if(!rindes.length||!qqs.length||!(has>0)){ toast("Completá has y los rangos primero"); return; }
-  const bt=document.getElementById("btPdfCmp"); if(bt){ bt.innerHTML='<span class="spin">⏳</span> Armando PDF…'; bt.disabled=true; }
+function cmpDibujarMatriz(doc, c){
+  const has=num(c.has), rindes=cmpSerie(c.rDesde,c.rHasta,c.rPaso), qqs=cmpSerie(c.qDesde,c.qHasta,c.qPaso);
+  cmpCfgActivo=c;
   try{
-    await cargarJsPDF();
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({unit:"mm", format:"a4", orientation:"landscape"});
     const W=297, MI=12, MD=285;
-    const esSoja=S.arrTipo==="SOJA_QQ", uni=esSoja?"qq soja/ha":"kg novillo/ha";
+    const esSoja=cmpTipoArr(c)==="SOJA_QQ", uni=esSoja?"qq soja/ha":"kg novillo/ha";
     const cc=S.params.cultivos[c.cultivo]||{};
     const ref=agriCalcPuro(c.cultivo, has, rindes[0], qqs[0]);
-    let y = ppMembrete(doc, W, MI, MD, "Comparativo rinde x arrendamiento", sinEmoji((S.nombreCampo? S.nombreCampo+" · ":"")+c.cultivo+" · "+fm2(has)+" has"));
+    let y = ppMembrete(doc, W, MI, MD, "Comparativo rinde x arrendamiento", sinEmoji((c.nombre? c.nombre+" · ":"")+(S.nombreCampo? S.nombreCampo+" · ":"")+c.cultivo+" · "+fm2(has)+" has"));
     doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(95,112,132);
     const refs = "Generado el "+HOY()+"  ·  Precio "+c.cultivo+": "+(cc.moneda==="USD"?"USD ":"$ ")+fm2(num(cc.precioTn))+"/tn"
       +"  ·  Gastos "+fm2(ref.pct)+"% s/ventas ("+(ref.hayCom?"sin gtos com. + comercializacion aparte: USD "+fm2(cmpCom().usd)+"/tn, $ "+fm2(cmpCom().ars)+"/tn, "+fm2(cmpCom().pct)+"%":"con gtos com. incluidos")+")"
@@ -2545,25 +2548,34 @@ async function cmpPDF(){
     y += 9;
     doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(95,112,132);
     doc.text("En cada celda: margen $/ha (arriba), margen total y % sobre ventas (abajo). Verde: ganancia. Rojo: perdida. \"Max. a pagar\": arrendamiento maximo en "+uni+" con ese rinde para no perder. \"Rinde min.\": rinde a partir del cual ese arrendamiento deja margen positivo.", MI, y, {maxWidth: MD-MI});
+  }finally{ cmpCfgActivo=null; }
+}
+async function cmpPDF(){
+  const c=cmpConfigActual(), has=num(c.has);
+  if((c.modo||"matriz")==="escalera") return cmpPDFEscalera();
+  const rindes=cmpSerie(c.rDesde,c.rHasta,c.rPaso), qqs=cmpSerie(c.qDesde,c.qHasta,c.qPaso);
+  if(!rindes.length||!qqs.length||!(has>0)){ toast("Completá has y los rangos primero"); return; }
+  const bt=document.getElementById("btPdfCmp"); if(bt){ bt.innerHTML='<span class="spin">⏳</span> Armando PDF…'; bt.disabled=true; }
+  try{
+    await cargarJsPDF();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:"mm", format:"a4", orientation:"landscape"});
+    cmpDibujarMatriz(doc, c);
     const nombre="comparativo_"+(S.nombreCampo? S.nombreCampo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"_").slice(0,25)+"_":"")+c.cultivo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")+"_"+HOY().replace(/\//g,"-")+".pdf";
     await verPDF(doc, nombre, "Comparativo rinde × arrendamiento", "Comparativo "+c.cultivo+(S.nombreCampo?" · "+S.nombreCampo:"")+" · "+fm2(has)+" has");
   }catch(e){ if(e && e.name!=="AbortError") toast("No se pudo armar el PDF: "+(e.message||e)); }
   if(bt){ bt.innerHTML="📄 Ver PDF comparativo"; bt.disabled=false; }
 }
 
-async function cmpPDFEscalera(){
-  const c=S.cmp, has=num(c.has), tr=preTramos();
-  if(!tr.length||!(has>0)){ toast("Cargá has y los tramos (en Precontrato) primero"); return; }
-  const bt=document.getElementById("btPdfCmp"); if(bt){ bt.innerHTML='<span class="spin">⏳</span> Armando PDF…'; bt.disabled=true; }
+function cmpDibujarEscalera(doc, c){
+  const has=num(c.has), tr=cmpTramosDe(c);
+  cmpCfgActivo=c;
   try{
-    await cargarJsPDF();
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({unit:"mm", format:"a4", orientation:"landscape"});
     const W=297, MI=12, MD=285;
-    const esSoja=S.arrTipo==="SOJA_QQ", uni=esSoja?"qq soja/ha":"kg novillo/ha";
+    const esSoja=cmpTipoArr(c)==="SOJA_QQ", uni=esSoja?"qq soja/ha":"kg novillo/ha";
     const cc=S.params.cultivos[c.cultivo]||{};
     const ref=agriCalcPuro(c.cultivo, has, num(tr[0].rinde), num(tr[0].qq));
-    let y = ppMembrete(doc, W, MI, MD, "Comparativo por tramos de rinde", sinEmoji((S.nombreCampo? S.nombreCampo+" · ":"")+c.cultivo+" · "+fm2(has)+" has"));
+    let y = ppMembrete(doc, W, MI, MD, "Comparativo por tramos de rinde", sinEmoji((c.nombre? c.nombre+" · ":"")+(S.nombreCampo? S.nombreCampo+" · ":"")+c.cultivo+" · "+fm2(has)+" has"));
     doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(95,112,132);
     const refs = "Generado el "+HOY()+"  ·  Precio "+c.cultivo+": "+(cc.moneda==="USD"?"USD ":"$ ")+fm2(num(cc.precioTn))+"/tn"
       +"  ·  Gastos "+fm2(ref.pct)+"% s/ventas ("+(ref.hayCom?"sin gtos com. + comercializacion aparte: USD "+fm2(cmpCom().usd)+"/tn, $ "+fm2(cmpCom().ars)+"/tn, "+fm2(cmpCom().pct)+"%":"con gtos com. incluidos")+")"
@@ -2601,10 +2613,90 @@ async function cmpPDFEscalera(){
     y+=3;
     doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(95,112,132);
     doc.text("Dentro de cada tramo el arrendamiento es fijo: el margen va del rinde menor (peor caso) al rinde mayor (mejor caso). Verde: ganancia. Rojo: perdida. \"Max. a pagar\": tope de "+uni+" que cierra sin perder en el peor rinde del tramo.", MI, y, {maxWidth:MD-MI});
+  }finally{ cmpCfgActivo=null; }
+}
+async function cmpPDFEscalera(){
+  const c=cmpConfigActual(), has=num(c.has), tr=cmpTramosDe(c);
+  if(!tr.length||!(has>0)){ toast("Cargá has y los tramos (en Precontrato) primero"); return; }
+  const bt=document.getElementById("btPdfCmp"); if(bt){ bt.innerHTML='<span class="spin">⏳</span> Armando PDF…'; bt.disabled=true; }
+  try{
+    await cargarJsPDF();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:"mm", format:"a4", orientation:"landscape"});
+    cmpDibujarEscalera(doc, c);
     const nombre="comparativo_tramos_"+(S.nombreCampo? S.nombreCampo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"_").slice(0,25)+"_":"")+c.cultivo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")+"_"+HOY().replace(/\//g,"-")+".pdf";
     await verPDF(doc, nombre, "Comparativo por tramos de rinde", "Comparativo por tramos "+c.cultivo+(S.nombreCampo?" · "+S.nombreCampo:"")+" · "+fm2(has)+" has");
   }catch(e){ if(e && e.name!=="AbortError") toast("No se pudo armar el PDF: "+(e.message||e)); }
   if(bt){ bt.innerHTML="📄 Ver PDF comparativo"; bt.disabled=false; }
+}
+
+/* ---------- ESCENARIOS GUARDADOS ---------- */
+function cmpConfigActual(nombre){
+  const c=JSON.parse(JSON.stringify(S.cmp||{}));
+  c.arrTipo = S.arrTipo;
+  if((c.modo||"matriz")==="escalera"){ c.tramos = JSON.parse(JSON.stringify(S.pre.tramos||{})); } else delete c.tramos;
+  if(nombre!==undefined) c.nombre=nombre; else delete c.nombre;
+  return c;
+}
+function cmpEscenarios(){ return Object.entries(S.cmpEsc||{}).map(([id,e])=>Object.assign({id},e)).sort((a,b)=>(a.ord||0)-(b.ord||0)); }
+function cmpGuardarEsc(){
+  const inp=document.getElementById("cmp_esnom"); const nom=(inp&&inp.value||"").trim();
+  const c=S.cmp;
+  const valido = (c.modo==="escalera") ? (preTramos().length && num(c.has)>0) : (cmpSerie(c.rDesde,c.rHasta,c.rPaso).length && cmpSerie(c.qDesde,c.qHasta,c.qPaso).length && num(c.has)>0);
+  if(!valido){ toast("Armá primero un comparativo completo"); return; }
+  S.cmpEsc=S.cmpEsc||{};
+  const n=cmpEscenarios().length;
+  const cfg=cmpConfigActual(nom || ("Escenario "+(n+1)+" · "+c.cultivo+" "+(c.modo==="escalera"?"escalera":"rinde "+fm2(num(c.rDesde))+(num(c.rHasta)>num(c.rDesde)?"-"+fm2(num(c.rHasta)):"")+" / "+fm2(num(c.qDesde))+(num(c.qHasta)>num(c.qDesde)?"-"+fm2(num(c.qHasta)):"")+" qq")));
+  cfg.ord=n; cfg.fecha=HOY();
+  S.cmpEsc["e"+Date.now().toString(36)]=cfg;
+  if(inp) inp.value="";
+  guardar(); cmpRender(); toast("✔ Escenario guardado ("+(n+1)+")");
+}
+function cmpCargarEsc(id){
+  const e=S.cmpEsc[id]; if(!e) return;
+  ["cultivo","has","rDesde","rHasta","rPaso","qDesde","qHasta","qPaso","modo","comModo","comUsd","comArs","comPct"].forEach(k=>{ if(e[k]!==undefined) S.cmp[k]=e[k]; });
+  if(e.arrTipo){ S.arrTipo=e.arrTipo; pintarArr(); }
+  guardar(); cmpRender(); toast("Escenario cargado en el comparativo");
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+function cmpBorrarEsc(id){
+  const e=S.cmpEsc[id]; if(!e) return;
+  if(!confirm("¿Borrar el escenario \""+(e.nombre||"")+"\"?")) return;
+  delete S.cmpEsc[id]; guardar(); cmpRender();
+}
+function cmpHtmlEscenarios(){
+  const es=cmpEscenarios();
+  return `<div class="tarjeta">
+    <h3 class="tit">🗂 Comparativos guardados (${es.length})</h3>
+    <p class="sub" style="margin-bottom:8px">Guardá el comparativo que armaste arriba con un nombre; después podés volver a cargarlo, borrarlo, o sacar <b>todos juntos en un solo PDF</b> (una hoja por comparativo).</p>
+    <div class="fila-botones" style="align-items:center">
+      <input type="text" id="cmp_esnom" placeholder="Nombre (ej: Maíz 8.000 kg, 9 a 12 qq)" style="flex:1;min-width:200px">
+      <button class="btn peq" onclick="cmpGuardarEsc()">💾 Guardar el comparativo actual</button>
+    </div>
+    ${es.length? `<div class="pp-scroll" style="margin-top:10px"><table class="pp-tab" style="min-width:0"><thead><tr><th>#</th><th>Nombre</th><th>Detalle</th><th>Fecha</th><th></th></tr></thead><tbody>
+      ${es.map((e,i)=>`<tr><td>${i+1}</td><td style="font-weight:700">${ppH(e.nombre||"")}</td>
+        <td style="font-size:12px;color:var(--gris)">${ppH(e.cultivo)} · ${fm2(num(e.has))} has · ${e.modo==="escalera"? Object.keys(e.tramos||{}).length+" tramos" : "rinde "+fm2(num(e.rDesde))+(num(e.rHasta)>num(e.rDesde)?"–"+fm2(num(e.rHasta)):"")+" · "+fm2(num(e.qDesde))+(num(e.qHasta)>num(e.qDesde)?"–"+fm2(num(e.qHasta)):"")+" "+((e.arrTipo||"SOJA_QQ")==="SOJA_QQ"?"qq":"kg")} · com. ${e.comModo==="con"?"incluida":e.comModo==="sin"?"aparte":"simulador"}</td>
+        <td style="font-size:12px;color:var(--gris)">${ppH(e.fecha||"")}</td>
+        <td style="white-space:nowrap"><button class="pp-ico" title="Cargar en el comparativo" onclick="cmpCargarEsc('${e.id}')">📂</button><button class="pp-ico" title="Borrar" onclick="cmpBorrarEsc('${e.id}')">🗑️</button></td></tr>`).join("")}
+      </tbody></table></div>
+      <button class="btn sec" style="margin-top:12px" id="btPdfCmpTodos" onclick="cmpPDFTodos()">📄 Ver PDF con todos los comparativos (${es.length})</button>` : ""}
+  </div>`;
+}
+async function cmpPDFTodos(){
+  const es=cmpEscenarios(); if(!es.length){ toast("No hay comparativos guardados"); return; }
+  const bt=document.getElementById("btPdfCmpTodos"); if(bt){ bt.innerHTML='<span class="spin">⏳</span> Armando PDF…'; bt.disabled=true; }
+  try{
+    await cargarJsPDF();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:"mm", format:"a4", orientation:"landscape"});
+    es.forEach((e,i)=>{
+      if(i>0) doc.addPage();
+      if((e.modo||"matriz")==="escalera") cmpDibujarEscalera(doc, e); else cmpDibujarMatriz(doc, e);
+    });
+    const nombre="comparativos_"+(S.nombreCampo? S.nombreCampo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"_").slice(0,25)+"_":"")+HOY().replace(/\//g,"-")+".pdf";
+    await verPDF(doc, nombre, "Comparativos ("+es.length+")", "Comparativos rinde × arrendamiento"+(S.nombreCampo?" · "+S.nombreCampo:"")+" · "+es.length+" escenarios");
+  }catch(e){ if(e && e.name!=="AbortError") toast("No se pudo armar el PDF: "+(e.message||e)); }
+  if(bt){ bt.innerHTML="📄 Ver PDF con todos los comparativos ("+es.length+")"; bt.disabled=false; }
 }
 
 /* ---------- PRECONTRATO ---------- */
