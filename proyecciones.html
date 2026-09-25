@@ -1210,7 +1210,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 34;   // subir este número en cada actualización del archivo
+const VERSION_APP = 35;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -2491,21 +2491,25 @@ function cmpHtmlEscalera(c, has, esSoja, uni, ref){
     <button class="btn" style="margin-top:12px" id="btPdfCmp" onclick="cmpPDF()">📄 Ver PDF comparativo</button>`;
   return h;
 }
-function cmpDibujarMatriz(doc, c){
+function cmpDibujarMatriz(doc, c, y0){
   const has=num(c.has), rindes=cmpSerie(c.rDesde,c.rHasta,c.rPaso), qqs=cmpSerie(c.qDesde,c.qHasta,c.qPaso);
+  const compacto = (y0!==undefined);
   cmpCfgActivo=c;
   try{
     const W=297, MI=12, MD=285;
     const esSoja=cmpTipoArr(c)==="SOJA_QQ", uni=esSoja?"qq soja/ha":"kg novillo/ha";
     const cc=S.params.cultivos[c.cultivo]||{};
     const ref=agriCalcPuro(c.cultivo, has, rindes[0], qqs[0]);
-    let y = ppMembrete(doc, W, MI, MD, "Comparativo rinde x arrendamiento", sinEmoji((c.nombre? c.nombre+" · ":"")+(S.nombreCampo? S.nombreCampo+" · ":"")+c.cultivo+" · "+fm2(has)+" has"));
+    let y;
+    if(!compacto) y = ppMembrete(doc, W, MI, MD, "Comparativo rinde x arrendamiento", sinEmoji((c.nombre? c.nombre+" · ":"")+(S.nombreCampo? S.nombreCampo+" · ":"")+c.cultivo+" · "+fm2(has)+" has"));
+    else { y=y0; doc.setFont("helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(21,101,192);
+      doc.text(sinEmoji((c.nombre? c.nombre+"  ·  ":"")+c.cultivo+" · "+fm2(has)+" has · tabla cruzada"), MI, y); y+=5; }
     doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(95,112,132);
     const refs = "Generado el "+HOY()+"  ·  Precio "+c.cultivo+": "+(cc.moneda==="USD"?"USD ":"$ ")+fm2(num(cc.precioTn))+"/tn"
       +"  ·  Gastos "+fm2(ref.pct)+"% s/ventas ("+(ref.hayCom?"sin gtos com. + comercializacion aparte: USD "+fm2(cmpCom().usd)+"/tn, $ "+fm2(cmpCom().ars)+"/tn, "+fm2(cmpCom().pct)+"%":"con gtos com. incluidos")+")"
       +"  ·  "+(esSoja?"Soja $ "+fm2(ref.pArr)+"/qq":"Novillo $ "+fm2(ref.pArr)+"/kg")
       +(num(S.params.tcCompra)>0?"  ·  TC $ "+fm2(num(S.params.tcCompra)):"");
-    doc.splitTextToSize(sinEmoji(refs), MD-MI).forEach(l=>{ doc.text(l, MI, y); y+=3.8; });
+    doc.splitTextToSize(sinEmoji(compacto? refs.replace(/^Generado el [^·]+·\s*/,"") : refs), MD-MI).forEach(l=>{ doc.text(l, MI, y); y+=3.8; });
     y+=3;
     // tabla
     const nCols = qqs.length+2;
@@ -2546,8 +2550,11 @@ function cmpDibujarMatriz(doc, c){
     qqs.forEach((q,i)=>{ const x=agriCalcPuro(c.cultivo, has, rindes[0], q);
       doc.text(x.rindeMin!==null? fm2(Math.round(x.rindeMin))+" kg" : "-", MI+w0+wc*(i+1)-1.5, y+1, {align:"right"}); });
     y += 9;
-    doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(95,112,132);
-    doc.text("En cada celda: margen $/ha (arriba), margen total y % sobre ventas (abajo). Verde: ganancia. Rojo: perdida. \"Max. a pagar\": arrendamiento maximo en "+uni+" con ese rinde para no perder. \"Rinde min.\": rinde a partir del cual ese arrendamiento deja margen positivo.", MI, y, {maxWidth: MD-MI});
+    if(!compacto){
+      doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(95,112,132);
+      doc.text("En cada celda: margen $/ha (arriba), margen total y % sobre ventas (abajo). Verde: ganancia. Rojo: perdida. \"Max. a pagar\": arrendamiento maximo en "+uni+" con ese rinde para no perder. \"Rinde min.\": rinde a partir del cual ese arrendamiento deja margen positivo.", MI, y, {maxWidth: MD-MI});
+    }
+    return y;
   }finally{ cmpCfgActivo=null; }
 }
 async function cmpPDF(){
@@ -2567,20 +2574,24 @@ async function cmpPDF(){
   if(bt){ bt.innerHTML="📄 Ver PDF comparativo"; bt.disabled=false; }
 }
 
-function cmpDibujarEscalera(doc, c){
+function cmpDibujarEscalera(doc, c, y0){
   const has=num(c.has), tr=cmpTramosDe(c);
+  const compacto = (y0!==undefined);
   cmpCfgActivo=c;
   try{
     const W=297, MI=12, MD=285;
     const esSoja=cmpTipoArr(c)==="SOJA_QQ", uni=esSoja?"qq soja/ha":"kg novillo/ha";
     const cc=S.params.cultivos[c.cultivo]||{};
     const ref=agriCalcPuro(c.cultivo, has, num(tr[0].rinde), num(tr[0].qq));
-    let y = ppMembrete(doc, W, MI, MD, "Comparativo por tramos de rinde", sinEmoji((c.nombre? c.nombre+" · ":"")+(S.nombreCampo? S.nombreCampo+" · ":"")+c.cultivo+" · "+fm2(has)+" has"));
+    let y;
+    if(!compacto) y = ppMembrete(doc, W, MI, MD, "Comparativo por tramos de rinde", sinEmoji((c.nombre? c.nombre+" · ":"")+(S.nombreCampo? S.nombreCampo+" · ":"")+c.cultivo+" · "+fm2(has)+" has"));
+    else { y=y0; doc.setFont("helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(21,101,192);
+      doc.text(sinEmoji((c.nombre? c.nombre+"  ·  ":"")+c.cultivo+" · "+fm2(has)+" has · escalera por tramos"), MI, y); y+=5; }
     doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(95,112,132);
     const refs = "Generado el "+HOY()+"  ·  Precio "+c.cultivo+": "+(cc.moneda==="USD"?"USD ":"$ ")+fm2(num(cc.precioTn))+"/tn"
       +"  ·  Gastos "+fm2(ref.pct)+"% s/ventas ("+(ref.hayCom?"sin gtos com. + comercializacion aparte: USD "+fm2(cmpCom().usd)+"/tn, $ "+fm2(cmpCom().ars)+"/tn, "+fm2(cmpCom().pct)+"%":"con gtos com. incluidos")+")"
       +"  ·  "+(esSoja?"Soja $ "+fm2(ref.pArr)+"/qq":"Novillo $ "+fm2(ref.pArr)+"/kg");
-    doc.splitTextToSize(sinEmoji(refs), MD-MI).forEach(l=>{ doc.text(l, MI, y); y+=3.8; });
+    doc.splitTextToSize(sinEmoji(compacto? refs.replace(/^Generado el [^·]+·\s*/,"") : refs), MD-MI).forEach(l=>{ doc.text(l, MI, y); y+=3.8; });
     y+=3;
     const cols=[{t:"Tramo",w:14},{t:"Rinde de "+sinEmoji(c.cultivo),w:60},{t:"Arrendamiento",w:32},{t:"Margen al rinde menor",w:62},{t:"Margen al rinde mayor",w:62},{t:"Max. a pagar (rinde menor)",w:43}];
     const cab=()=>{ let x=MI; doc.setFillColor(21,101,192); doc.rect(MI,y-4.5,MD-MI,7,"F"); doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(8);
@@ -2611,8 +2622,11 @@ function cmpDibujarEscalera(doc, c){
       y+=11;
     });
     y+=3;
-    doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(95,112,132);
-    doc.text("Dentro de cada tramo el arrendamiento es fijo: el margen va del rinde menor (peor caso) al rinde mayor (mejor caso). Verde: ganancia. Rojo: perdida. \"Max. a pagar\": tope de "+uni+" que cierra sin perder en el peor rinde del tramo.", MI, y, {maxWidth:MD-MI});
+    if(!compacto){
+      doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(95,112,132);
+      doc.text("Dentro de cada tramo el arrendamiento es fijo: el margen va del rinde menor (peor caso) al rinde mayor (mejor caso). Verde: ganancia. Rojo: perdida. \"Max. a pagar\": tope de "+uni+" que cierra sin perder en el peor rinde del tramo.", MI, y, {maxWidth:MD-MI});
+    }
+    return y;
   }finally{ cmpCfgActivo=null; }
 }
 async function cmpPDFEscalera(){
@@ -2689,10 +2703,20 @@ async function cmpPDFTodos(){
     await cargarJsPDF();
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({unit:"mm", format:"a4", orientation:"landscape"});
+    const W=297, MI=12, MD=285;
+    let y = ppMembrete(doc, W, MI, MD, "Comparativos rinde x arrendamiento", sinEmoji((S.nombreCampo? S.nombreCampo+" · ":"")+es.length+" escenarios · "+HOY()));
     es.forEach((e,i)=>{
-      if(i>0) doc.addPage();
-      if((e.modo||"matriz")==="escalera") cmpDibujarEscalera(doc, e); else cmpDibujarMatriz(doc, e);
+      // altura estimada del bloque: título + refs + cabecera + filas + pie
+      const nFilas = (e.modo||"matriz")==="escalera" ? cmpTramosDe(e).length : cmpSerie(e.rDesde,e.rHasta,e.rPaso).length;
+      const altoEst = 5 + 8 + 6 + nFilas*((e.modo||"matriz")==="escalera"?11:9.5) + 12;
+      if(i>0 && y + altoEst > 200){ doc.addPage(); y = 16; }
+      else if(i>0){ doc.setDrawColor(189,211,236); doc.line(MI, y-2, MD, y-2); y += 4; }
+      y = ((e.modo||"matriz")==="escalera") ? cmpDibujarEscalera(doc, e, y) : cmpDibujarMatriz(doc, e, y);
+      y += 4;
     });
+    if(y > 185){ doc.addPage(); y = 16; }
+    doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(95,112,132);
+    doc.text("En cada celda: margen $/ha (arriba), margen total y % sobre ventas (abajo). Verde: ganancia. Rojo: perdida. \"Max. a pagar\": arrendamiento maximo con ese rinde para no perder. \"Rinde min.\": rinde a partir del cual ese arrendamiento deja margen positivo. En las escaleras, el margen va del rinde menor (peor caso) al mayor (mejor caso) de cada tramo.", MI, y, {maxWidth: MD-MI});
     const nombre="comparativos_"+(S.nombreCampo? S.nombreCampo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"_").slice(0,25)+"_":"")+HOY().replace(/\//g,"-")+".pdf";
     await verPDF(doc, nombre, "Comparativos ("+es.length+")", "Comparativos rinde × arrendamiento"+(S.nombreCampo?" · "+S.nombreCampo:"")+" · "+es.length+" escenarios");
   }catch(e){ if(e && e.name!=="AbortError") toast("No se pudo armar el PDF: "+(e.message||e)); }
