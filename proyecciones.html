@@ -617,22 +617,22 @@ async function fetchTexto(url, opts){
     {u:"https://api.codetabs.com/v1/proxy?quest="+encodeURIComponent(url), tipo:"texto", nom:"codetabs"},
     {u:"https://api.allorigins.win/get?url="+encodeURIComponent(url), tipo:"json", nom:"allorigins-json"}
   );
-  let ultimoError = "sin respuesta";
+  const errores = [];
   for(const i of intentos){
     try{
       const ctl = new AbortController();
-      const t = setTimeout(()=>ctl.abort(), i.nom==="conector propio"? 12000 : 6000);
+      const t = setTimeout(()=>ctl.abort(), i.nom==="conector propio"? 30000 : 6000);
       const r = await fetch(i.u, Object.assign({signal:ctl.signal}, opts||{}));
       clearTimeout(t);
-      if(!r.ok){ ultimoError = i.nom+": HTTP "+r.status; continue; }
+      if(!r.ok){ errores.push(i.nom+" HTTP "+r.status); continue; }
       let texto;
       if(i.tipo==="json"){ const j = await r.json(); texto = (j && j.contents) || ""; }
       else texto = await r.text();
       if(texto && texto.length > 150){ window.__ultimaVia = i.nom; return texto; }
-      ultimoError = i.nom+": respuesta vacía";
-    }catch(e){ ultimoError = i.nom+": "+((e && e.name==="AbortError") ? "tiempo agotado" : "sin conexión"); }
+      errores.push(i.nom+" vacío");
+    }catch(e){ errores.push(i.nom+" "+((e && e.name==="AbortError") ? "tiempo agotado" : "bloqueado/sin conexión")); }
   }
-  throw new Error(ultimoError);
+  throw new Error(errores.join(" · "));
 }
 
 /* getters genéricos input→estado */
@@ -1301,7 +1301,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 40;   // subir este número en cada actualización del archivo
+const VERSION_APP = 41;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -2354,16 +2354,32 @@ function pintarProxy(){
 async function probarProxy(){
   const i=document.getElementById("pProxyUrl"); if(i){ S.params.proxyUrl=i.value.trim(); guardar(); pintarProxy(); }
   const pp=proxyPropio(); if(!pp){ toast("Pegá la URL de la aplicación web (empieza con https://script.google.com/)"); return; }
-  const e=document.getElementById("proxyEstado"); if(e) e.textContent="⏳ Probando el conector con la pizarra BCR…";
+  const e=document.getElementById("proxyEstado");
+  const set=(m,mal)=>{ if(e){ e.textContent=m; e.classList.toggle("vieja",!!mal); } };
+  // Etapa 1: ¿el conector responde? (se le pide algo liviano y seguro: DolarApi)
+  set("⏳ Etapa 1/2: probando que el conector responda…");
   try{
-    const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(), 20000);
+    const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(), 30000);
+    const r=await fetch(pp+"?url="+encodeURIComponent("https://dolarapi.com/v1/dolares/oficial"), {signal:ctl.signal}); clearTimeout(t);
+    const txt=await r.text();
+    if(!/"venta"/.test(txt)){
+      set("✖ El conector respondió pero no devolvió datos (recibí: "+txt.slice(0,90).replace(/\s+/g," ")+"…). Casi seguro la implementación no está como 'Aplicación web' con acceso 'Cualquier usuario', o el código pegado no es el de la app.", true);
+      toast("El conector no está devolviendo datos: revisá el acceso 'Cualquier usuario'", 7000); return;
+    }
+  }catch(err){
+    set("✖ No se pudo llamar al conector ("+(err.name==="AbortError"?"tiempo agotado":"el navegador lo bloqueó")+"). Esto pasa cuando la implementación tiene acceso 'Solo yo': Google redirige a una pantalla de login que la app no puede leer. Corregilo en Apps Script: Implementar → Administrar implementaciones → ✏️ → Quién tiene acceso: Cualquier usuario → Nueva versión → Implementar.", true);
+    toast("El conector no responde a la app: revisá el acceso 'Cualquier usuario'", 8000); return;
+  }
+  // Etapa 2: ¿la BCR devuelve la pizarra a través del conector?
+  set("✔ Etapa 1 OK: el conector responde. ⏳ Etapa 2/2: pidiendo la pizarra BCR (puede tardar hasta 30 s)…");
+  try{
+    const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(), 30000);
     const r=await fetch(pp+"?url="+encodeURIComponent(URL_BCR), {signal:ctl.signal}); clearTimeout(t);
     const html=await r.text();
     const m=html.match(/\bSoja\b[\s\S]{0,500}?\$\s*([\d]{1,3}(?:\.[\d]{3})*(?:,\d{1,2})?|\d+)/i);
-    if(m){ if(e) e.textContent="✔ Conector OK: la pizarra BCR responde (soja $ "+m[1]+"/tn). Ya podés usar los botones de precios."; e.classList.remove("vieja"); toast("✔ Conector funcionando"); }
-    else if(html.length>150){ if(e) e.textContent="⚠ El conector responde, pero la BCR devolvió una página sin precios ("+html.length+" caracteres). Probá de nuevo en un rato."; toast("El conector responde pero la BCR no devolvió precios"); }
-    else { if(e) e.textContent="⚠ El conector respondió vacío: revisá que la implementación sea 'Aplicación web' con acceso 'Cualquier usuario'. Respuesta: "+html.slice(0,80); toast("Respuesta vacía del conector"); }
-  }catch(err){ if(e) e.textContent="✖ No se pudo llamar al conector ("+(err.name==="AbortError"?"tiempo agotado":err.message)+"). Verificá la URL y el acceso 'Cualquier usuario'."; e.classList.add("vieja"); toast("No responde el conector"); }
+    if(m){ set("✔ Conector OK: la pizarra BCR responde (soja $ "+m[1]+"/tn). Ya podés usar los botones de precios."); toast("✔ Conector funcionando"); }
+    else set("⚠ El conector funciona, pero la BCR le devolvió una página sin precios ("+html.length+" caracteres; empieza: "+html.slice(0,60).replace(/\s+/g," ")+"…). Puede ser una pantalla anti-robots o un cambio en el sitio. Probá de nuevo en unos minutos.", true);
+  }catch(err){ set("⚠ El conector responde, pero la consulta a la BCR "+(err.name==="AbortError"?"tardó más de 30 s":"falló")+". Reintentá en un rato.", true); }
 }
 function pintarVarInsumos(){
   const el=document.getElementById("varInsumosCard"); if(!el) return;
