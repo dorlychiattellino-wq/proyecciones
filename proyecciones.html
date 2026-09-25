@@ -1209,7 +1209,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 31;   // subir este número en cada actualización del archivo
+const VERSION_APP = 32;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -2347,9 +2347,11 @@ function cmpRender(){
 function cmpSet(obj, k, v){ obj[k]=v; guardar(); cmpRender(); }
 function cmpSerie(desde, hasta, paso){
   const a=num(desde), b=num(hasta), p=num(paso);
-  if(!(a>0) || !(p>0)) return [];
-  const out=[]; const fin = b>=a? b : a;
-  for(let x=a; x<=fin+1e-9 && out.length<25; x+=p) out.push(Math.round(x*1000)/1000);
+  if(!(a>0)) return [];
+  if(!(b>a)) return [a];                       // un solo valor: no hace falta paso
+  if(!(p>0)) return [a, b];                    // sin paso: solo los dos extremos
+  const out=[];
+  for(let x=a; x<=b+1e-9 && out.length<25; x+=p) out.push(Math.round(x*1000)/1000);
   return out;
 }
 function cmpFmtCel(v){ return (v<0?"−":"")+"$ "+Math.abs(Math.round(v)).toLocaleString("es-AR"); }
@@ -2398,7 +2400,7 @@ function cmpHtmlSens(){
   </div>`;
   if(modo==="escalera") return h;
   if(!rindes.length || !qqs.length || !(has>0)){
-    h += `<div class="tarjeta"><p class="sub" style="margin:0">Cargá has, el rango de rindes y el rango de arrendamiento (desde / hasta / paso) para ver la tabla. Para comparar un solo arrendamiento con varios rindes, poné el mismo valor en "desde" y "hasta".</p></div>`;
+    h += `<div class="tarjeta"><p class="sub" style="margin:0">Cargá las has, el rinde (desde / hasta / paso) y el arrendamiento (desde / hasta / paso) para ver la tabla. Para un solo valor, poné el mismo número en "desde" y "hasta" (el paso no hace falta).</p></div>`;
     return h;
   }
   h += `<div class="tarjeta">
