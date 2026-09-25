@@ -1209,7 +1209,7 @@ async function compartirPDF(){
    ============================================================ */
 const SYNCKEY = "proy_campo_syncurl";
 const PENDKEY = "proy_campo_pendientes";
-const VERSION_APP = 30;   // subir este número en cada actualización del archivo
+const VERSION_APP = 31;   // subir este número en cada actualización del archivo
 const SYNC_DEFAULT = "https://proyeccionescampo-103b6-default-rtdb.firebaseio.com";
 const OFFKEY = "proy_campo_syncoff";
 let syncUrl = (function(){
@@ -2620,8 +2620,8 @@ function cmpHtmlPre(){
   <div class="tarjeta">
     <h3 class="tit">📊 Escalera de rinde → arrendamiento</h3>
     <div class="fila3" style="background:#f4f8fd;border:1px dashed var(--gris-cl);border-radius:10px;padding:10px;margin-bottom:10px">
-      <div class="campo-form" style="margin:0"><label>Rinde (kg/ha)</label><input type="text" inputmode="decimal" id="pre_r" placeholder="Ej: 6000"></div>
-      <div class="campo-form" style="margin:0"><label>Arrendamiento (${uni})</label><input type="text" inputmode="decimal" id="pre_q" placeholder="Ej: 10"></div>
+      <div class="campo-form" style="margin:0"><label>Rinde HASTA (kg/ha) — tope del tramo</label><input type="text" inputmode="decimal" id="pre_r" placeholder="Ej: 8000"></div>
+      <div class="campo-form" style="margin:0"><label>Arrendamiento (${uni}) para ese tramo</label><input type="text" inputmode="decimal" id="pre_q" placeholder="Ej: 9"></div>
       <div class="campo-form" style="margin:0"><label>&nbsp;</label><button class="btn peq" style="width:100%" onclick="preTramoNuevo()">＋ Agregar tramo</button></div>
     </div>
     <details style="margin-bottom:10px"><summary style="cursor:pointer;font-size:13px;color:var(--verde);font-weight:700">Generar tramos automáticamente</summary>
@@ -2647,6 +2647,7 @@ function cmpHtmlPre(){
           <td style="text-align:right;color:var(--gris)">${pRef>0&&has>0? fm(num(t.qq)*has*pRef):"—"}</td>
           <td><button class="pp-ico" onclick="delete S.pre.tramos['${t.id}'];guardar();cmpRender()">✕</button></td></tr>`; }).join("")}
       </tbody></table></div>
+      ${(()=>{ const rs=tr.map(t=>num(t.rinde)); const dup=rs.filter((r,i)=>rs.indexOf(r)!==i); return dup.length? `<div class="aviso" style="border-color:var(--rojo);color:var(--rojo)">⚠ Hay tramos repetidos con rinde ${dup.map(r=>fm2(r)).join(", ")}: borrá el que sobra. Cada tramo se define por su rinde TOPE ("hasta"), y el siguiente arranca desde ahí.</div>` : ""; })()}
       <div class="aviso">Los tramos se ordenan solos por rinde. El primer tramo cubre "hasta" ese rinde y el último "más de" el rinde anterior. La columna "Ref. $ hoy" es solo orientativa (${esSoja?"soja $ "+fm2(pRef)+"/qq":"novillo $ "+fm2(pRef)+"/kg"} cargado en el Simulador) y NO sale en el precontrato.</div>
       <button class="btn" style="margin-top:12px" id="btPdfPre" onclick="prePDF()">📄 Ver PDF precontrato</button>`
     : `<p class="sub" style="margin:0">Todavía no hay tramos. Agregá uno por uno o generalos automáticamente.</p>`}
@@ -2657,7 +2658,11 @@ function preTramoNuevo(){
   const r=num(document.getElementById("pre_r").value), q=num(document.getElementById("pre_q").value);
   if(!(r>0)||!(q>0)){ toast("Cargá rinde y arrendamiento"); return; }
   S.pre.tramos = S.pre.tramos||{};
-  S.pre.tramos["t"+Date.now().toString(36)] = {rinde:r, qq:q};
+  const rep = Object.keys(S.pre.tramos).find(k=>num(S.pre.tramos[k].rinde)===r);
+  if(rep){
+    if(!confirm("Ya hay un tramo \"hasta "+fm2(r)+" kg/ha\" con "+fm2(num(S.pre.tramos[rep].qq))+". ¿Reemplazarlo por "+fm2(q)+"?\n\n(Cada tramo se define por su rinde tope: el siguiente arranca desde ahí.)")) return;
+    S.pre.tramos[rep].qq = q;
+  }else S.pre.tramos["t"+Date.now().toString(36)] = {rinde:r, qq:q};
   guardar(); cmpRender();
 }
 function preGenerar(){
